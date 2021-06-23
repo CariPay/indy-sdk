@@ -1,27 +1,22 @@
 use actix::prelude::*;
 use failure::*;
 
+use crate::domain::a2connection::A2ConnMessage;
+use crate::domain::admin_message::{AdminQuery, ResAdminQuery};
+
 pub mod router;
 pub mod forward_agent;
+pub mod admin;
 pub mod forward_agent_connection;
 pub mod agent;
 pub mod agent_connection;
 pub mod requester;
 
-use domain::a2connection::A2ConnMessage;
+#[derive(Debug, Clone)]
+pub struct HandleAdminMessage(pub AdminQuery);
 
-// Common messages
-
-pub struct AddA2ARoute(pub String, pub Recipient<HandleA2AMsg>);
-
-impl Message for AddA2ARoute {
-    type Result = ();
-}
-
-pub struct AddA2ConnRoute(pub String, pub Recipient<HandleA2ConnMsg>);
-
-impl Message for AddA2ConnRoute {
-    type Result = ();
+impl Message for HandleAdminMessage {
+    type Result = Result<ResAdminQuery, Error>;
 }
 
 #[derive(Debug)]
@@ -50,13 +45,6 @@ impl Message for ForwardA2AMsg {
 pub struct HandleA2AMsg(pub Vec<u8>);
 
 impl Message for HandleA2AMsg {
-    type Result = Result<Vec<u8>, Error>;
-}
-
-#[derive(Debug)]
-pub struct RouteA2AMsg(pub String, pub Vec<u8>);
-
-impl Message for RouteA2AMsg {
     type Result = Result<Vec<u8>, Error>;
 }
 

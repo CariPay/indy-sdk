@@ -29,6 +29,7 @@
       "crypto_type": string, (optional; if not set then ed25519 curve is used;
                 currently only 'ed25519' value is supported for this field)
       "cid": bool, (optional; if not set then false is used;)
+      "method_name": string, (optional) method name to create fully qualified did.
   }
  @endcode
  
@@ -81,6 +82,7 @@
 
 /**
  Saves their DID for a pairwise connection in a secured Wallet, so that it can be used to verify transaction.
+ Updates DID associated verkey in case DID already exists in the Wallet.
 
  @code
  {
@@ -92,6 +94,12 @@
  @endcode
  
  @param identityJSON Identity information as json. See example above.
+    {
+       "did": string, (required)
+       "verkey": string
+                   - optional is case of adding a new DID, and DID is cryptonym: did == verkey,
+                   - mandatory in case of updating an existing DID
+    }
  @param walletHandle Wallet handler (created by IndyWallet::OpenWalletWithName).
  @param completion Callback that takes command result as parameter.Returns error code.
  */
@@ -195,7 +203,6 @@
              walletHandle:(IndyHandle)walletHandle
                completion:(void (^)(NSError *error, NSString *metadata))completion;
 
-
 /**
  Retrieves abbreviated verkey if it is possible otherwise return full verkey.
 
@@ -207,4 +214,38 @@
               fullVerkey:(NSString *)fullVerkey
               completion:(void (^)(NSError *error, NSString *verkey))completion;
 
+
+/**
+ * Retrieves the information about all DIDs stored in the wallet.
+ *
+ * @param walletHandle The wallet.
+ * Completion returns metadata resolving to a list of dids: [{
+ *     "did": string - DID stored in the wallet,
+ *     "verkey": string - The DIDs transport key (ver key, key id).,
+ *     "metadata": string - The meta information stored with the DID
+ *   }]
+ */
++ (void)listMyDidsWithMeta:(IndyHandle)walletHandle
+                completion:(void (^)(NSError *error, NSString *metadata))completion;
+                
+
+/**
+ Update DID stored in the wallet to make fully qualified, or to do other DID maintenance.
+     - If the DID has no prefix, a prefix will be appended (prepend did:peer to a legacy did)
+     - If the DID has a prefix, a prefix will be updated (migrate did:peer to did:peer-new)
+
+ Update DID related entities stored in the wallet.
+
+ @param  walletHandle: Wallet handle (created by open_wallet).
+ @param  did: target DID stored in the wallet.
+ @param  method: method to apply to the DID.
+
+ @param completion Callback that takes command result as parameter.
+ Returns did: fully qualified did
+ */
++ (void)qualifyDid:(NSString *)did
+            method:(NSString *)method
+      walletHandle:(IndyHandle)walletHandle
+        completion:(void (^)(NSError *error, NSString *fullQualifiedDid))completion;
+       
 @end

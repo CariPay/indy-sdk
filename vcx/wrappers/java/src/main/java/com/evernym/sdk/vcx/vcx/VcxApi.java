@@ -10,7 +10,7 @@ import com.sun.jna.Callback;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java9.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletableFuture;
 
 public class VcxApi extends VcxJava.API {
     private static final Logger logger = LoggerFactory.getLogger("VcxApi");
@@ -44,7 +44,7 @@ public class VcxApi extends VcxJava.API {
 
     public static CompletableFuture<Integer> vcxInitWithConfig(String configJson) throws VcxException {
         ParamGuard.notNullOrWhiteSpace(configJson, "config");
-        logger.debug("vcxInitWithConfig() called with: configJson = [" + configJson + "]");
+        logger.debug("vcxInitWithConfig() called with: configJson = [****]");
         CompletableFuture<Integer> future = new CompletableFuture<Integer>();
         int commandHandle = addFuture(future);
 
@@ -71,11 +71,27 @@ public class VcxApi extends VcxJava.API {
         return future;
     }
 
+    public static int vcxInitMinimal(String configJson) throws VcxException {
+        ParamGuard.notNullOrWhiteSpace(configJson, "config");
+        logger.debug("vcxInitMinimal() called with: configJson = [" + configJson + "]");
+
+        int result = LibVcx.api.vcx_init_minimal(
+                configJson);
+        checkResult(result);
+
+        return result;
+    }
+
     public static int vcxShutdown(Boolean deleteWallet) throws VcxException {
         logger.debug("vcxShutdown() called with: deleteWallet = [" + deleteWallet + "]");
         int result = LibVcx.api.vcx_shutdown(deleteWallet);
         checkResult(result);
         return result;
+    }
+
+    public static String vcxVersion() throws VcxException {
+        logger.debug("vcxVersion()");
+        return LibVcx.api.vcx_version();
     }
 
     public static String vcxErrorCMessage(int errorCode) {

@@ -30,8 +30,8 @@
 
 	<repositories>
 		<repository>
-			<id>evernym</id>
-			<url>https://repo.evernym.com/artifactory/libindy-maven-local</url>
+			<id>sovrin</id>
+			<url>https://repo.sovrin.org/repository/maven-public</url>
 		</repository>
 	</repositories>
 
@@ -88,7 +88,7 @@
 		<dependency>
 			<groupId>junit</groupId>
 			<artifactId>junit</artifactId>
-			<version>4.12</version>
+			<version>4.13.1</version>
 		</dependency>
 		<dependency>
 			<groupId>org.apache.commons</groupId>
@@ -104,12 +104,17 @@
 		<dependency>
 			<groupId>org.json</groupId>
 			<artifactId>json</artifactId>
-			<version>20160810</version>
+			<version>20180130</version>
 		</dependency>
 		<dependency>
 			<groupId>org.hyperledger</groupId>
 			<artifactId>indy</artifactId>
-			<version>1.6.2-dev-720</version>
+			<version>1.14.1-rc-120</version>
 		</dependency>
+		<!--<dependency>-->
+			<!--<groupId>org.slf4j</groupId>-->
+			<!--<artifactId>slf4j-simple</artifactId>-->
+			<!--<version>1.7.5</version>-->
+		<!--</dependency>-->  <!---Dorg.slf4j.simpleLogger.defaultLogLevel=debug-->
 	</dependencies>
 </project>

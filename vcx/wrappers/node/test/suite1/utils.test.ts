@@ -4,9 +4,12 @@ import { assert } from 'chai'
 import { initVcxTestMode, shouldThrow } from 'helpers/utils'
 import {
   downloadMessages,
+  endorseTransaction,
+  getLedgerAuthorAgreement,
   getLedgerFees,
   getVersion,
   provisionAgent,
+  setActiveTxnAuthorAgreementMeta,
   updateAgentInfo,
   updateInstitutionConfigs,
   updateMessages,
@@ -103,13 +106,33 @@ describe('utils:', () => {
 
   describe('VCXCode:', () => {
     it('should have a one-to-one mapping for each code', async () => {
-      let max = 0
+      let max: number = 0
       for (const ec in VCXCode) {
-        if (typeof VCXCode[ec] === 'number' && Number(VCXCode[ec]) > max) {
+        if (Number(VCXCode[ec]) > max) {
           max = Number(VCXCode[ec])
         }
       }
       assert.equal(errorMessage(max + 1), errorMessage(1001))
+    })
+  })
+
+  describe('setActiveTxnAuthorAgreementMeta:', () => {
+    it('success', async () => {
+      setActiveTxnAuthorAgreementMeta('indy agreement', '1.0.0', undefined, 'acceptance type 1', 123456789)
+    })
+  })
+
+  describe('getLedgerAuthorAgreement:', () => {
+    it('success', async () => {
+      const agreement = await getLedgerAuthorAgreement()
+      assert.equal(agreement, '{"text":"Default indy agreement", "version":"1.0.0", "aml": {"acceptance mechanism label1": "description"}}')
+    })
+  })
+
+  describe('endorseTransaction:', () => {
+    it('success', async () => {
+      const transaction = '{"req_id":1, "identifier": "EbP4aYNeTHL6q385GuVpRV", "signature": "gkVDhwe2", "endorser": "NcYxiDXkpYi6ov5FcYDi1e"}'
+      await endorseTransaction(transaction)
     })
   })
 

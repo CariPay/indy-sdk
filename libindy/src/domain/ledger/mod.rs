@@ -12,3 +12,6 @@ pub mod rev_reg;
 pub mod response;
 pub mod validator_info;
 pub mod constants;
+pub mod auth_rule;
+pub mod author_agreement;
+pub mod ledgers_freeze;

@@ -1,7 +1,5 @@
 extern crate env_logger;
 extern crate log;
-extern crate log4rs;
-extern crate log_panics;
 extern crate libc;
 extern crate indy_sys;
 
@@ -11,7 +9,6 @@ extern crate android_logger;
 use std::io::Write;
 use self::env_logger::Builder as EnvLoggerBuilder;
 use self::log::{Level, LevelFilter, Metadata, Record};
-use std::sync::{Once, ONCE_INIT};
 use self::libc::{c_char};
 use std::env;
 use std::ptr;
@@ -22,12 +19,16 @@ use std::ffi::CString;
 #[cfg(target_os = "android")]
 use self::android_logger::Filter;
 use utils::cstring::CStringUtils;
-use utils::error::LOGGING_ERROR;
+use error::prelude::*;
 
 use utils::libindy;
 
+#[cfg(debug_assertions)]
+const DEFAULT_MAX_LEVEL: LevelFilter = LevelFilter::Trace;
+#[cfg(not(debug_assertions))]
+const DEFAULT_MAX_LEVEL: LevelFilter = LevelFilter::Info;
+
 pub static mut LOGGER_STATE: LoggerState = LoggerState::Default;
-static LOGGER_INIT: Once = ONCE_INIT;
 static mut CONTEXT: *const CVoid = ptr::null();
 static mut ENABLED_CB: Option<EnabledCB> = None;
 static mut LOG_CB: Option<LogCB> = None;
@@ -60,12 +61,21 @@ impl LibvcxLogger {
         LibvcxLogger { context, enabled, log, flush }
     }
 
-    pub fn init(context: *const CVoid, enabled: Option<EnabledCB>, log: LogCB, flush: Option<FlushCB>) -> Result<(), u32> {
+    pub fn init(context: *const CVoid, enabled: Option<EnabledCB>, log: LogCB, flush: Option<FlushCB>, max_lvl: Option<u32>) -> VcxResult<()> {
         trace!("LibvcxLogger::init >>>");
         let logger = LibvcxLogger::new(context, enabled, log, flush);
-        log::set_boxed_logger(Box::new(logger)).map_err(|_| LOGGING_ERROR.code_num)?;
+        log::set_boxed_logger(Box::new(logger))
+            .map_err(|err| VcxError::from_msg(VcxErrorKind::LoggingError, format!("Setting logger failed with: {}", err)))?;
         log::set_max_level(LevelFilter::Trace);
-        libindy::logger::set_logger(log::logger()).map_err(|_| LOGGING_ERROR.code_num)?;
+        libindy::logger::set_logger(log::logger())
+            .map_err(|err| err.map(VcxErrorKind::LoggingError, "Setting logger failed"))?;
+
+        let max_lvl = match max_lvl {
+            Some(max_lvl) => LibvcxLogger::map_u32_lvl_to_filter(max_lvl)?,
+            None => DEFAULT_MAX_LEVEL,
+        };
+        log::set_max_level(max_lvl);
+
         unsafe {
             LOGGER_STATE = LoggerState::Custom;
             CONTEXT = context;
@@ -75,6 +85,27 @@ impl LibvcxLogger {
         }
 
         Ok(())
+    }
+
+    fn map_u32_lvl_to_filter(max_level: u32) -> VcxResult<LevelFilter> {
+        let max_level = match max_level {
+            0 => LevelFilter::Off,
+            1 => LevelFilter::Error,
+            2 => LevelFilter::Warn,
+            3 => LevelFilter::Info,
+            4 => LevelFilter::Debug,
+            5 => LevelFilter::Trace,
+            _ => return Err(VcxError::from(VcxErrorKind::LoggingError)),
+        };
+        Ok(max_level)
+    }
+
+    pub fn set_max_level(max_level: u32) -> VcxResult<LevelFilter> {
+        let max_level_filter = LibvcxLogger::map_u32_lvl_to_filter(max_level)?;
+
+        log::set_max_level(max_level_filter);
+
+        Ok(max_level_filter)
     }
 }
 
@@ -140,14 +171,14 @@ impl LibvcxDefaultLogger {
 
         // ensures that the test that is calling this wont fail simply because
         // the user did not set the RUST_LOG env var.
-        let pattern = Some(env::var("RUST_LOG").unwrap_or("debug".to_string()));
+        let pattern = Some(env::var("RUST_LOG").unwrap_or("trace".to_string()));
         match LibvcxDefaultLogger::init(pattern) {
-            Ok(_) => (),
+            Ok(()) => (),
             Err(_) => (),
         }
     }
 
-    pub fn init(pattern: Option<String>) -> Result<(), u32> {
+    pub fn init(pattern: Option<String>) -> VcxResult<()> {
         trace!("LibvcxDefaultLogger::init >>> pattern: {:?}", pattern);
 
         let pattern = pattern.or(env::var("RUST_LOG").ok());
@@ -179,10 +210,10 @@ impl LibvcxDefaultLogger {
                 .filter(None, LevelFilter::Off)
                 .parse(pattern.as_ref().map(String::as_str).unwrap_or("warn"))
                 .try_init() {
-                Ok(_) => {}
+                Ok(()) => {}
                 Err(e) => {
                     error!("Error in logging init: {:?}", e);
-                    return Err(LOGGING_ERROR.code_num);
+                    return Err(VcxError::from_msg(VcxErrorKind::LoggingError, format!("Cannot init logger: {:?}", e)))
                 }
             }
         }
@@ -253,21 +284,19 @@ mod tests {
         ptr::null()
     }
 
-    static mut CHANGED: Option<String> = None;
     static mut COUNT: u32 = 0;
 
-    extern fn custom_enabled(context: *const CVoid, level: u32, target: *const c_char) -> bool { true }
+    extern fn custom_enabled(_context: *const CVoid, _level: u32, _target: *const c_char) -> bool { true }
 
-    extern fn custom_flush(context: *const CVoid) {}
+    extern fn custom_flush(_context: *const CVoid) {}
 
-    extern fn custom_log(context: *const CVoid,
-                         level: u32,
-                         target: *const c_char,
-                         message: *const c_char,
-                         module_path: *const c_char,
-                         file: *const c_char,
-                         line: u32) {
-        let message = CStringUtils::c_str_to_string(message).unwrap();
+    extern fn custom_log(_context: *const CVoid,
+                         _level: u32,
+                         _target: *const c_char,
+                         _message: *const c_char,
+                         _module_path: *const c_char,
+                         _file: *const c_char,
+                         _line: u32) {
         unsafe { COUNT = COUNT + 1 }
     }
 
@@ -276,7 +305,7 @@ mod tests {
     fn test_logging_get_logger() {
         LibvcxDefaultLogger::init(Some("debug".to_string())).unwrap();
         unsafe {
-            let (context, enabled_cb, log_cb, flush_cb) = LOGGER_STATE.get();
+            let (context, enabled_cb, _log_cb, _flush_cb) = LOGGER_STATE.get();
             assert_eq!(context, ptr::null());
             let target = CStringUtils::string_to_cstring("target".to_string());
             let level = 1;
@@ -293,7 +322,8 @@ mod tests {
         LibvcxLogger::init(get_custom_context(),
                            Some(custom_enabled),
                            custom_log,
-                           Some(custom_flush)).unwrap();
+                           Some(custom_flush),
+                            None).unwrap();
         error!("error level message"); // first call of log function
         unsafe {
             assert_eq!(COUNT, 2) // second-time log function was called inside libindy

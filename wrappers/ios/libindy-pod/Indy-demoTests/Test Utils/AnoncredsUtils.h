@@ -11,9 +11,15 @@
 
 + (AnoncredsUtils *)sharedInstance;
 
++ (void)clearInstance;
+
 - (NSString *)defaultCredentialDefConfig;
 
 - (NSString *)getGvtSchemaId;
+
+- (NSString *)credDefId;
+
+- (NSString *)revRegId;
 
 - (NSString *)getGvtSchemaJson;
 
@@ -28,6 +34,8 @@
 - (NSString *)credentialId1;
 
 - (NSString *)credentialId2;
+
+- (NSString *)credentialId3;
 
 - (NSString *)gvtCredDef;
 
@@ -48,6 +56,14 @@
                                            walletHandle:(IndyHandle)walletHandle
                                               credDefId:(NSString **)credentialDefId
                                             credDefJson:(NSString **)credentialDefJson;
+
+- (NSError *)issuerRotateCredentialDefStartForId:(NSString *)credDefId
+                                      configJSON:(NSString *)configJSON
+                                    walletHandle:(IndyHandle)walletHandle
+                                     credDefJson:(NSString **)credentialDefJson;
+
+- (NSError *)issuerRotateCredentialDefApplyForId:(NSString *)credDefId
+                                    walletHandle:(IndyHandle)walletHandle;
 
 - (NSError *)issuerCreateAndStoreRevocRegForCredentialDefId:(NSString *)credDefID
                                                   issuerDID:(NSString *)issuerDID
@@ -119,6 +135,9 @@
                           walletHandle:(IndyHandle)walletHandle
                         credentialJson:(NSString **)outCredentialJson;
 
+- (NSError *)proverDeleteCredentialsWithId:(NSString *)credId
+                              walletHandle:(IndyHandle)walletHandle;
+
 - (NSError *)proverGetCredentialsForFilter:(NSString *)filterJSON
                               walletHandle:(IndyHandle)walletHandle
                             credentilsJson:(NSString **)credentialsJson;
@@ -178,6 +197,8 @@
                           revocRegsJSON:(NSString *)revocRegsJSON
                                 isValid:(BOOL *)isValid;
 
+- (NSError *)generateNonce:(NSString **)nonce;
+
 - (NSError *)initializeCommonWalletAndReturnHandle:(IndyHandle *)walletHandle
                                  credentialDefJson:(NSString **)credentialDefJson
                                credentialOfferJson:(NSString **)credentialOfferJson
@@ -185,5 +206,8 @@
                                     credentialJson:(NSString **)credentialfJson;
 
 - (NSString *)toJson:(NSDictionary *)dictionary;
+
+- (NSError *)toUnqualified:(NSString *)entity
+                       res:(NSString **)res;
 
 @end

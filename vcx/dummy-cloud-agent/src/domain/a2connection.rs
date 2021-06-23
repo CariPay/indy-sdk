@@ -1,5 +1,6 @@
-use domain::a2a::*;
 use std::convert::Into;
+
+use crate::domain::a2a::*;
 
 #[derive(Debug)]
 pub enum A2ConnMessage {
@@ -9,7 +10,7 @@ pub enum A2ConnMessage {
     MessageStatusUpdatedByConnection(UidByConnection),
 }
 
-#[derive(Debug, Deserialize, Serialize, Eq, PartialEq)]
+#[derive(Debug, Deserialize, Serialize, PartialEq)]
 pub struct MessagesByConnection {
     #[serde(rename = "pairwiseDID")]
     #[serde(default)]

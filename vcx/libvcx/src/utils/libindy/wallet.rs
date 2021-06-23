@@ -1,425 +1,492 @@
-extern crate libc;
-extern crate serde_json;
-
 use futures::Future;
+use indy::{wallet, ErrorCode};
 
 use settings;
-use utils::libindy::error_codes::map_rust_indy_sdk_error;
-use utils::error;
-use error::wallet::WalletError;
-use indy::wallet;
-use indy::ErrorCode;
-use std::path::Path;
-pub static mut WALLET_HANDLE: i32 = 0;
 
-pub fn get_wallet_handle() -> i32 { unsafe { WALLET_HANDLE } }
+use error::prelude::*;
+use indy::{WalletHandle, INVALID_WALLET_HANDLE};
 
-pub fn create_wallet(wallet_name: &str, wallet_type: Option<&str>) -> Result<(), u32> {
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct WalletRecord {
+    id: Option<String>,
+    #[serde(rename = "type")]
+    record_type: Option<String>,
+    pub value: Option<String>,
+    tags: Option<String>,
+}
+
+impl WalletRecord {
+    pub fn to_string(&self) -> VcxResult<String> {
+        serde_json::to_string(&self)
+            .map_err(|err| VcxError::from_msg(VcxErrorKind::InvalidJson, format!("Cannot serialize WalletRecord: {:?}", err)))
+    }
+
+    pub fn from_str(data: &str) -> VcxResult<WalletRecord> {
+        serde_json::from_str(data)
+            .map_err(|err| VcxError::from_msg(VcxErrorKind::InvalidJson, format!("Cannot deserialize WalletRecord: {:?}", err)))
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct RestoreWalletConfigs {
+    pub wallet_name: String,
+    pub wallet_key: String,
+    pub exported_wallet_path: String,
+    pub backup_key: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub key_derivation: Option<String>,
+}
+
+impl RestoreWalletConfigs {
+    pub fn to_string(&self) -> VcxResult<String> {
+        serde_json::to_string(&self)
+            .map_err(|err| VcxError::from_msg(VcxErrorKind::InvalidJson, format!("Cannot serialize RestoreWalletConfigs: {:?}", err)))
+    }
+
+    pub fn from_str(data: &str) -> VcxResult<RestoreWalletConfigs> {
+        serde_json::from_str(data)
+            .map_err(|err| VcxError::from_msg(VcxErrorKind::InvalidJson, format!("Cannot deserialize RestoreWalletConfigs: {:?}", err)))
+    }
+}
+
+pub static mut WALLET_HANDLE: WalletHandle = INVALID_WALLET_HANDLE;
+
+pub fn set_wallet_handle(handle: WalletHandle) -> WalletHandle {
+    unsafe { WALLET_HANDLE = handle; }
+    unsafe { WALLET_HANDLE }
+}
+
+pub fn get_wallet_handle() -> WalletHandle { unsafe { WALLET_HANDLE } }
+
+pub fn reset_wallet_handle() { set_wallet_handle(INVALID_WALLET_HANDLE); }
+
+pub fn create_wallet(wallet_name: &str, wallet_type: Option<&str>, storage_config: Option<&str>, storage_creds: Option<&str>) -> VcxResult<()> {
     trace!("creating wallet: {}", wallet_name);
 
-    let config = json!({
-        "id": wallet_name,
-        "storage_type": wallet_type
-    }).to_string();
+    let config = settings::get_wallet_config(wallet_name, wallet_type, storage_config);
+    let credentials = settings::get_wallet_credentials(storage_creds);
 
-    match wallet::create_wallet(&config, &settings::get_wallet_credentials()).wait() {
-        Ok(x) => Ok(()),
-        Err(x) => if x.error_code != ErrorCode::WalletAlreadyExistsError && x.error_code != ErrorCode::Success {
-            warn!("could not create wallet {}: {:?}", wallet_name, x.message);
-            Err(error::INVALID_WALLET_CREATION.code_num)
-        } else {
-            warn!("could not create wallet {}: {:?}", wallet_name, x.message);
-            Ok(())
+    match wallet::create_wallet(&config, &credentials)
+        .wait() {
+        Ok(()) => Ok(()),
+        Err(err) => {
+            match err.error_code.clone() {
+                ErrorCode::WalletAlreadyExistsError => {
+                    warn!("wallet \"{}\" already exists. skipping creation", wallet_name);
+                    Ok(())
+                }
+                _ => {
+                    warn!("could not create wallet {}: {:?}", wallet_name, err.message);
+                    Err(VcxError::from_msg(VcxErrorKind::WalletCreate, format!("could not create wallet {}: {:?}", wallet_name, err.message)))
+                }
+            }
         }
     }
 }
 
-pub fn open_wallet(wallet_name: &str, wallet_type: Option<&str>) -> Result<i32, u32> {
+pub fn open_wallet(wallet_name: &str, wallet_type: Option<&str>, storage_config: Option<&str>, storage_creds: Option<&str>) -> VcxResult<WalletHandle> {
     trace!("open_wallet >>> wallet_name: {}", wallet_name);
-    if settings::test_indy_mode_enabled() {
-        unsafe {WALLET_HANDLE = 1;}
-        return Ok(1);
+    if settings::indy_mocks_enabled() {
+        return Ok(set_wallet_handle(WalletHandle(1)));
     }
 
-    let config = json!({
-        "id": wallet_name,
-        "storage_type": wallet_type
-    }).to_string();
+    let config = settings::get_wallet_config(wallet_name, wallet_type, storage_config);
+    let credentials = settings::get_wallet_credentials(storage_creds);
 
-    let handle = wallet::open_wallet(&config, &settings::get_wallet_credentials())
+    let handle = wallet::open_wallet(&config, &credentials)
         .wait()
-        .map_err(map_rust_indy_sdk_error)?;
+        .map_err(|err|
+            match err.error_code.clone() {
+                ErrorCode::WalletAlreadyOpenedError => {
+                    err.to_vcx(VcxErrorKind::WalletAlreadyOpen,
+                               format!("Wallet \"{}\" already opened.", wallet_name))
+                }
+                ErrorCode::WalletAccessFailed => {
+                    err.to_vcx(VcxErrorKind::WalletAccessFailed,
+                               format!("Can not open wallet \"{}\". Invalid key has been provided.", wallet_name))
+                }
+                ErrorCode::WalletNotFoundError => {
+                    err.to_vcx(VcxErrorKind::WalletNotFound,
+                               format!("Wallet \"{}\" not found or unavailable", wallet_name))
+                }
+                error_code => {
+                    err.to_vcx(VcxErrorKind::LibndyError(error_code as u32), "Indy error occurred")
+                }
+            })?;
 
-    unsafe { WALLET_HANDLE = handle; }
+    set_wallet_handle(handle);
+
     Ok(handle)
 }
 
-pub fn init_wallet(wallet_name: &str, wallet_type: Option<&str>) -> Result<i32, u32> {
-    if settings::test_indy_mode_enabled() {
-        unsafe {WALLET_HANDLE = 1;}
-        return Ok(1);
+pub fn init_wallet(wallet_name: &str, wallet_type: Option<&str>, storage_config: Option<&str>, storage_creds: Option<&str>) -> VcxResult<WalletHandle> {
+    if settings::indy_mocks_enabled() {
+        return Ok(set_wallet_handle(WalletHandle(1)));
     }
 
-    create_wallet(wallet_name, wallet_type)?;
-    open_wallet(wallet_name, wallet_type)
+    create_wallet(wallet_name, wallet_type, storage_config, storage_creds)?;
+    open_wallet(wallet_name, wallet_type, storage_config, storage_creds)
 }
 
-pub fn close_wallet() -> Result<(), u32> {
+pub fn close_wallet() -> VcxResult<()> {
     trace!("close_wallet >>>");
 
-    if settings::test_indy_mode_enabled() {
-        unsafe { WALLET_HANDLE = 0; }
+    if settings::indy_mocks_enabled() {
+        set_wallet_handle(INVALID_WALLET_HANDLE);
         return Ok(());
     }
-    let result = wallet::close_wallet(get_wallet_handle()).wait().map_err(map_rust_indy_sdk_error);
-    unsafe { WALLET_HANDLE = 0; }
-    result
+
+    wallet::close_wallet(get_wallet_handle())
+        .wait()?;
+
+    reset_wallet_handle();
+    Ok(())
 }
 
-pub fn delete_wallet(wallet_name: &str, wallet_type: Option<&str>) -> Result<(), u32> {
+pub fn delete_wallet(wallet_name: &str, wallet_type: Option<&str>, storage_config: Option<&str>, storage_creds: Option<&str>) -> VcxResult<()> {
     trace!("delete_wallet >>> wallet_name: {}", wallet_name);
 
-    if settings::test_indy_mode_enabled() {
-        unsafe { WALLET_HANDLE = 0;}
-        return Ok(())
-    }
+    close_wallet().ok();
 
-    match close_wallet() {
-        Ok(_) => (),
-        Err(x) => (),
-    };
+    let config = settings::get_wallet_config(wallet_name, wallet_type, storage_config);
+    let credentials = settings::get_wallet_credentials(storage_creds);
 
-    let config = json!({
-        "id": wallet_name,
-        "storage_type": wallet_type
-    }).to_string();
+    wallet::delete_wallet(&config, &credentials)
+        .wait()
+        .map_err(|err|
+            match err.error_code.clone() {
+                ErrorCode::WalletAccessFailed => {
+                    err.to_vcx(VcxErrorKind::WalletAccessFailed,
+                               format!("Can not open wallet \"{}\". Invalid key has been provided.", wallet_name))
+                }
+                ErrorCode::WalletNotFoundError => {
+                    err.to_vcx(VcxErrorKind::WalletNotFound,
+                               format!("Wallet \"{}\" not found or unavailable", wallet_name))
+                }
+                error_code => {
+                    err.to_vcx(VcxErrorKind::LibndyError(error_code as u32), "Indy error occurred")
+                }
+            })?;
 
-    wallet::delete_wallet(&config,&settings::get_wallet_credentials()).wait().map_err(map_rust_indy_sdk_error)
+    Ok(())
 }
 
-pub fn add_record(xtype: &str, id: &str, value: &str, tags: Option<&str>) -> Result<(), u32> {
-    trace!("add_record >>> xtype: {}, id: {}, value: {}, tags: {:?}", xtype, id, value, tags);
+pub fn add_record(xtype: &str, id: &str, value: &str, tags: Option<&str>) -> VcxResult<()> {
+    trace!("add_record >>> xtype: {}, id: {}, value: {}, tags: {:?}", secret!(&xtype), secret!(&id), secret!(&value), secret!(&tags));
 
-    if settings::test_indy_mode_enabled() { return Ok(()) }
+    if settings::indy_mocks_enabled() { return Ok(()); }
 
     wallet::add_wallet_record(get_wallet_handle(), xtype, id, value, tags)
         .wait()
-        .map_err(map_rust_indy_sdk_error)
+        .map_err(VcxError::from)
 }
 
+pub fn get_record(xtype: &str, id: &str, options: &str) -> VcxResult<String> {
+    trace!("get_record >>> xtype: {}, id: {}, options: {}", secret!(&xtype), secret!(&id), options);
 
-pub fn get_record(xtype: &str, id: &str, options: &str) -> Result<String, u32> {
-    trace!("get_record >>> xtype: {}, id: {}, options: {}", xtype, id, options);
-
-    if settings::test_indy_mode_enabled() {
-        return Ok(r#"{"id":"123","type":"record type","value":"record value","tags":null}"#.to_string())
+    if settings::indy_mocks_enabled() {
+        return Ok(r#"{"id":"123","type":"record type","value":"record value","tags":null}"#.to_string());
     }
 
     wallet::get_wallet_record(get_wallet_handle(), xtype, id, options)
         .wait()
-        .map_err(map_rust_indy_sdk_error)
+        .map_err(VcxError::from)
 }
 
-pub fn delete_record(xtype: &str, id: &str) -> Result<(), u32> {
-    trace!("delete_record >>> xtype: {}, id: {}", xtype, id);
+pub fn delete_record(xtype: &str, id: &str) -> VcxResult<()> {
+    trace!("delete_record >>> xtype: {}, id: {}", secret!(&xtype), secret!(&id));
 
-    if settings::test_indy_mode_enabled() { return Ok(()) }
+    if settings::indy_mocks_enabled() { return Ok(()); }
+
     wallet::delete_wallet_record(get_wallet_handle(), xtype, id)
         .wait()
-        .map_err(map_rust_indy_sdk_error)
+        .map_err(VcxError::from)
 }
 
 
-pub fn update_record_value(xtype: &str, id: &str, value: &str) -> Result<(), u32> {
-    trace!("update_record_value >>> xtype: {}, id: {}, value: {}", xtype, id, value);
+pub fn update_record_value(xtype: &str, id: &str, value: &str) -> VcxResult<()> {
+    trace!("update_record_value >>> xtype: {}, id: {}, value: {}", secret!(&xtype), secret!(&id), secret!(&value));
 
-    if settings::test_indy_mode_enabled() { return Ok(()) }
+    if settings::indy_mocks_enabled() { return Ok(()); }
+
     wallet::update_wallet_record_value(get_wallet_handle(), xtype, id, value)
         .wait()
-        .map_err(map_rust_indy_sdk_error)
+        .map_err(VcxError::from)
 }
 
-pub fn export(wallet_handle: i32, path: &Path, backup_key: &str) -> Result<(), WalletError> {
-    trace!("export >>> wallet_handle: {}, path: {:?}, backup_key: ****", wallet_handle, path);
+pub fn export(wallet_handle: WalletHandle, path: &str, backup_key: &str) -> VcxResult<()> {
+    trace!("export >>> wallet_handle: {:?}, path: {:?}, backup_key: ****", wallet_handle, path);
 
     let export_config = json!({ "key": backup_key, "path": &path}).to_string();
-    match wallet::export_wallet(wallet_handle, &export_config).wait() {
-        Ok(_) => Ok(()),
-        Err(e) => Err(WalletError::CommonError(map_rust_indy_sdk_error(e))),
-    }
+    wallet::export_wallet(wallet_handle, &export_config)
+        .wait()
+        .map_err(VcxError::from)
 }
 
-pub fn import(config: &str) -> Result<(), WalletError> {
+pub fn import(config: &str) -> VcxResult<()> {
     trace!("import >>> config {}", config);
 
-    settings::process_config_string(config).map_err(|e| WalletError::CommonError(e))?;
+    let restore_config = RestoreWalletConfigs::from_str(config)?;
 
-    let key = settings::get_config_value(settings::CONFIG_WALLET_KEY)
-        .map_err(|e| WalletError::CommonError(e))?;
+    let config = settings::get_wallet_config(&restore_config.wallet_name, None, None);
+    let credentials = settings::get_wallet_credentials(None);
+    let import_config = json!({"key": restore_config.backup_key, "path": restore_config.exported_wallet_path }).to_string();
 
-    let name = settings::get_config_value(settings::CONFIG_WALLET_NAME)
-        .map_err(|e| WalletError::CommonError(error::MISSING_WALLET_NAME.code_num))?;
-
-    let exported_wallet_path = settings::get_config_value(settings::CONFIG_EXPORTED_WALLET_PATH)
-        .or(Err(WalletError::CommonError(error::MISSING_EXPORTED_WALLET_PATH.code_num)))?;
-
-    let backup_key = settings::get_config_value(settings::CONFIG_WALLET_BACKUP_KEY)
-        .or(Err(WalletError::CommonError(error::MISSING_BACKUP_KEY.code_num)))?;
-
-    let config = json!({"id":name}).to_string();
-    let credentials = settings::get_wallet_credentials();
-    let import_config = json!({"key": backup_key, "path": exported_wallet_path }).to_string();
-
-    match wallet::import_wallet(&config, &credentials, &import_config).wait() {
-        Ok(_) => Ok(()),
-        Err(e) => Err(WalletError::CommonError(map_rust_indy_sdk_error(e))),
-    }
+    wallet::import_wallet(&config, &credentials, &import_config)
+        .wait()
+        .map_err(VcxError::from)
 }
 
 #[cfg(test)]
 pub mod tests {
     use super::*;
-    use utils::{get_temp_dir_path, error};
-    use std::thread;
-    use std::time::Duration;
-    use utils::devsetup::tests::setup_wallet_env;
-    use std::{fs, env};
+    use utils::get_temp_dir_path;
+    use utils::devsetup::{SetupLibraryWallet, SetupDefaults, TempFile, SetupEmpty};
+    use ::utils::libindy::signus::create_and_store_my_did;
 
-    pub fn export_test_wallet() -> ::std::path::PathBuf {
-        let filename_str = &settings::get_config_value(settings::CONFIG_WALLET_NAME).unwrap();
-        let mut dir = env::temp_dir();
-        dir.push(filename_str);
-        if Path::new(&dir).exists() {
-            fs::remove_file(Path::new(&dir)).unwrap();
-        }
+    fn _record() -> (&'static str, &'static str, &'static str) {
+        ("type1", "id1", "value1")
+    }
 
-        let wallet_name = settings::get_config_value(settings::CONFIG_WALLET_NAME).unwrap();
+    pub fn export_test_wallet() -> (TempFile, String) {
+        let wallet_name = "export_test_wallet";
+
+        let export_file = TempFile::prepare_path(wallet_name);
+
+        let handle = init_wallet(wallet_name, None, None, None).unwrap();
+
+        let (my_did, my_vk) = create_and_store_my_did(None, None).unwrap();
+
+        settings::set_config_value(settings::CONFIG_INSTITUTION_DID, &my_did);
+        settings::set_config_value(settings::CONFIG_SDK_TO_REMOTE_VERKEY, &my_vk);
+
         let backup_key = settings::get_config_value(settings::CONFIG_WALLET_BACKUP_KEY).unwrap();
-        let handle = setup_wallet_env(&wallet_name).unwrap();
 
-        let xtype = "type1";
-        let id = "id1";
-        let value = "value1";
-        add_record(xtype, id, value, None).unwrap();
+        let (type_, id, value) = _record();
+        add_record(type_, id, value, None).unwrap();
 
-        export(handle, &dir, &backup_key).unwrap();
-        dir
-    }
+        export(handle, &export_file.path, &backup_key).unwrap();
 
-    pub fn delete_import_wallet_path(dir: ::std::path::PathBuf) {
-        fs::remove_file(Path::new(&dir)).unwrap();
-        assert!(!Path::new(&dir).exists());
-    }
+        close_wallet().unwrap();
 
-    pub fn delete_test_wallet(name: &str) {
-        match close_wallet() {
-            Ok(_) => (),
-            Err(_) => (),
-        };
-
-        match delete_wallet(name, None) {
-            Ok(_) => (),
-            Err(_) => (),
-        };
+        (export_file, wallet_name.to_string())
     }
 
     #[test]
     fn test_wallet() {
-        init!("false");
-        assert!( get_wallet_handle() > 0);
-        assert_eq!(error::INVALID_WALLET_CREATION.code_num, init_wallet(&String::from(""), None).unwrap_err());
+        let _setup = SetupLibraryWallet::init();
+
+        assert_ne!(get_wallet_handle(), INVALID_WALLET_HANDLE);
+        assert_eq!(VcxErrorKind::WalletCreate, init_wallet(&String::from(""), None, None, None).unwrap_err().kind());
     }
 
     #[test]
     fn test_wallet_for_unknown_type() {
-        init!("false");
-        assert_eq!(error::INVALID_WALLET_CREATION.code_num, init_wallet("test_wallet_for_unknown_type", Some("UNKNOWN_WALLET_TYPE")).unwrap_err());
+        let _setup = SetupDefaults::init();
+
+        assert_eq!(VcxErrorKind::WalletCreate, init_wallet("test_wallet_for_unknown_type", Some("UNKNOWN_WALLET_TYPE"), None, None).unwrap_err().kind());
     }
 
     #[test]
     fn test_wallet_calls_fail_with_different_key_derivation() {
-        teardown!("false");
-        ::api::vcx::vcx_shutdown(true);
+        let _setup = SetupDefaults::init();
+
         let wallet_n = settings::DEFAULT_WALLET_NAME;
-        settings::set_config_value(settings::CONFIG_WALLET_KEY, settings::DEFAULT_WALLET_KEY);
-        settings::set_config_value(settings::CONFIG_WALLET_KEY_DERIVATION, settings::DEFAULT_WALLET_KEY_DERIVATION);
-        create_wallet(wallet_n, None).unwrap();
+
+        settings::set_defaults();
+        create_wallet(wallet_n, None, None, None).unwrap();
+
+        settings::clear_config();
 
         // Open fails without Wallet Key Derivation set
-        ::api::vcx::vcx_shutdown(false);
-        assert_eq!(open_wallet(wallet_n, None), Err(error::UNKNOWN_LIBINDY_ERROR.code_num));
+        assert_eq!(open_wallet(wallet_n, None, None, None).unwrap_err().kind(), VcxErrorKind::WalletAccessFailed);
+
+        ::settings::clear_config();
 
         // Open works when set
         settings::set_config_value(settings::CONFIG_WALLET_KEY, settings::DEFAULT_WALLET_KEY);
         settings::set_config_value(settings::CONFIG_WALLET_KEY_DERIVATION, settings::DEFAULT_WALLET_KEY_DERIVATION);
-        assert!(open_wallet(wallet_n, None).is_ok());
+        assert!(open_wallet(wallet_n, None, None, None).is_ok());
+
+        ::settings::clear_config();
 
         // Delete fails
-        ::api::vcx::vcx_shutdown(false);
-        assert_eq!(delete_wallet(wallet_n, None), Err(error::UNKNOWN_LIBINDY_ERROR.code_num));
+        assert_eq!(delete_wallet(wallet_n, None, None, None).unwrap_err().kind(), VcxErrorKind::WalletAccessFailed);
 
         // Delete works
-        settings::set_config_value(settings::CONFIG_WALLET_KEY, settings::DEFAULT_WALLET_KEY);
-        settings::set_config_value(settings::CONFIG_WALLET_KEY_DERIVATION, settings::DEFAULT_WALLET_KEY_DERIVATION);
-        assert!(delete_wallet(wallet_n, None).is_ok());
+        settings::set_defaults();
+        delete_wallet(wallet_n, None, None, None).unwrap()
     }
 
     #[test]
-    fn test_wallet_import_export() {
-        settings::set_defaults();
-        teardown!("false");
+    fn test_wallet_import_export_with_different_wallet_key() {
+        let _setup = SetupDefaults::init();
 
-        let export_path = export_test_wallet();
+        let (export_path, wallet_name) = export_test_wallet();
+
+        delete_wallet(&wallet_name, None, None, None).unwrap();
 
         let xtype = "type1";
         let id = "id1";
         let value = "value1";
-        let options = "{}";
 
         ::api::vcx::vcx_shutdown(true);
 
         let import_config = json!({
-            settings::CONFIG_WALLET_NAME: settings::DEFAULT_WALLET_NAME,
-            settings::CONFIG_WALLET_KEY: settings::DEFAULT_WALLET_KEY,
-            settings::CONFIG_EXPORTED_WALLET_PATH: export_path,
+            settings::CONFIG_WALLET_NAME: wallet_name.as_str(),
+            settings::CONFIG_WALLET_KEY: "new key",
+            settings::CONFIG_EXPORTED_WALLET_PATH: export_path.path,
             settings::CONFIG_WALLET_BACKUP_KEY: settings::DEFAULT_WALLET_BACKUP_KEY,
         }).to_string();
         import(&import_config).unwrap();
-        open_wallet(&settings::DEFAULT_WALLET_NAME, None).unwrap();
+        open_wallet(&wallet_name, None, None, None).unwrap();
 
         // If wallet was successfully imported, there will be an error trying to add this duplicate record
-        assert_eq!(add_record(xtype, id, value, None), Err(error::DUPLICATE_WALLET_RECORD.code_num));
-        thread::sleep(Duration::from_secs(1));
-        ::api::vcx::vcx_shutdown(true);
-        delete_import_wallet_path(export_path);
+        assert_eq!(add_record(xtype, id, value, None).unwrap_err().kind(), VcxErrorKind::DuplicationWalletRecord);
+
+        delete_wallet(&wallet_name, None, None, None).unwrap();
+    }
+
+    #[test]
+    fn test_wallet_import_export() {
+        let _setup = SetupDefaults::init();
+
+        let (export_wallet_path, wallet_name) = export_test_wallet();
+
+        delete_wallet(&wallet_name, None, None, None).unwrap();
+
+        let (type_, id, value) = _record();
+
+        let import_config = json!({
+            settings::CONFIG_WALLET_NAME: wallet_name.as_str(),
+            settings::CONFIG_WALLET_KEY: settings::DEFAULT_WALLET_KEY,
+            settings::CONFIG_EXPORTED_WALLET_PATH: export_wallet_path.path,
+            settings::CONFIG_WALLET_BACKUP_KEY: settings::DEFAULT_WALLET_BACKUP_KEY,
+        }).to_string();
+
+        import(&import_config).unwrap();
+        open_wallet(&wallet_name, None, None, None).unwrap();
+
+        // If wallet was successfully imported, there will be an error trying to add this duplicate record
+        assert_eq!(add_record(type_, id, value, None).unwrap_err().kind(), VcxErrorKind::DuplicationWalletRecord);
+
+        delete_wallet(&wallet_name, None, None, None).unwrap();
     }
 
     #[test]
     fn test_import_fails_with_missing_configs() {
-        settings::set_config_value(settings::CONFIG_ENABLE_TEST_MODE,"false");
-        ::api::vcx::vcx_shutdown(true);
+        let _setup = SetupEmpty::init();
 
         // Invalid json
-        assert_eq!(import(""), Err(WalletError::CommonError(error::INVALID_JSON.code_num)));
+        let res = import("").unwrap_err();
+        assert_eq!(res.kind(), VcxErrorKind::InvalidJson);
         let mut config = json!({});
 
         // Missing wallet_key
-        assert_eq!(import(&config.to_string()), Err(WalletError::CommonError(error::MISSING_WALLET_KEY.code_num)));
+        let res = import(&config.to_string()).unwrap_err();
+        assert_eq!(res.kind(), VcxErrorKind::InvalidJson);
         config[settings::CONFIG_WALLET_KEY] = serde_json::to_value("wallet_key1").unwrap();
 
         // Missing wallet name
-        assert_eq!(import(&config.to_string()), Err(WalletError::CommonError(error::MISSING_WALLET_NAME.code_num)));
+        let res = import(&config.to_string()).unwrap_err();
+        assert_eq!(res.kind(), VcxErrorKind::InvalidJson);
         config[settings::CONFIG_WALLET_NAME] = serde_json::to_value("wallet_name1").unwrap();
 
         // Missing exported_wallet_path
-        assert_eq!(import(&config.to_string()), Err(WalletError::CommonError(error::MISSING_EXPORTED_WALLET_PATH.code_num)));
+        let res = import(&config.to_string()).unwrap_err();
+        assert_eq!(res.kind(), VcxErrorKind::InvalidJson);
         config[settings::CONFIG_EXPORTED_WALLET_PATH] = serde_json::to_value(
-            get_temp_dir_path(Some(settings::DEFAULT_EXPORTED_WALLET_PATH)).to_str().unwrap()
+            get_temp_dir_path(settings::DEFAULT_EXPORTED_WALLET_PATH).to_str().unwrap()
         ).unwrap();
 
         // Missing backup_key
-        assert_eq!(import(&config.to_string()), Err(WalletError::CommonError(error::MISSING_BACKUP_KEY.code_num)));
+        let res = import(&config.to_string()).unwrap_err();
+        assert_eq!(res.kind(), VcxErrorKind::InvalidJson);
     }
 
     #[test]
     fn test_import_wallet_fails_with_existing_wallet() {
-        settings::set_defaults();
+        let _setup = SetupDefaults::init();
 
-        let export_path = export_test_wallet();
+        let (export_wallet_path, wallet_name) = export_test_wallet();
+
+        let import_config = json!({
+            settings::CONFIG_WALLET_NAME: wallet_name,
+            settings::CONFIG_WALLET_KEY: settings::DEFAULT_WALLET_KEY,
+            settings::CONFIG_EXPORTED_WALLET_PATH: export_wallet_path.path,
+            settings::CONFIG_WALLET_BACKUP_KEY: settings::DEFAULT_WALLET_BACKUP_KEY,
+        }).to_string();
+
+        let res = import(&import_config).unwrap_err();
+        assert_eq!(res.kind(), VcxErrorKind::DuplicationWallet);
+
+        delete_wallet(&wallet_name, None, None, None).unwrap();
+    }
+
+    #[test]
+    fn test_import_wallet_fails_with_invalid_path() {
+        let _setup = SetupDefaults::init();
 
         let import_config = json!({
             settings::CONFIG_WALLET_NAME: settings::DEFAULT_WALLET_NAME,
             settings::CONFIG_WALLET_KEY: settings::DEFAULT_WALLET_KEY,
-            settings::CONFIG_EXPORTED_WALLET_PATH: export_path,
+            settings::CONFIG_EXPORTED_WALLET_PATH: "DIFFERENT_PATH",
             settings::CONFIG_WALLET_BACKUP_KEY: settings::DEFAULT_WALLET_BACKUP_KEY,
         }).to_string();
-        assert_eq!(import(&import_config), Err(WalletError::CommonError(error::WALLET_ALREADY_EXISTS.code_num)));
 
-        ::api::vcx::vcx_shutdown(true);
-        delete_import_wallet_path(export_path);
-    }
-
-    #[test]
-    fn test_import_wallet_fails_with_invalid_path(){
-        settings::set_defaults();
-        let wallet_name = "test_import_wallet_fails_with_invalid_path";
-        settings::set_config_value(settings::CONFIG_WALLET_NAME, wallet_name);
-        let wallet_key = settings::get_config_value(settings::CONFIG_WALLET_KEY).unwrap();
-        let backup_key = settings::get_config_value(settings::CONFIG_WALLET_BACKUP_KEY).unwrap();
-
-        let dir = export_test_wallet();
-
-        let import_config = json!({
-            settings::CONFIG_WALLET_NAME: wallet_name,
-            settings::CONFIG_WALLET_KEY: wallet_key,
-            settings::CONFIG_EXPORTED_WALLET_PATH: "DIFFERENT_PATH",
-            settings::CONFIG_WALLET_BACKUP_KEY: backup_key,
-        }).to_string();
-        assert_eq!(import(&import_config), Err(WalletError::CommonError(error::IOERROR.code_num)));
-
-        ::api::vcx::vcx_shutdown(true);
-        delete_import_wallet_path(dir);
+        let res = import(&import_config).unwrap_err();
+        assert_eq!(res.kind(), VcxErrorKind::IOError);
     }
 
     #[test]
     fn test_import_wallet_fails_with_invalid_backup_key() {
-        settings::set_config_value(settings::CONFIG_ENABLE_TEST_MODE, "false");
-        settings::set_defaults();
-        teardown!("false");
+        let _setup = SetupDefaults::init();
 
         let bad_backup = "456";
 
-        let export_path = export_test_wallet();
+        let (export_wallet_path, wallet_name) = export_test_wallet();
 
-        ::api::vcx::vcx_shutdown(true);
+        delete_wallet(&wallet_name, None, None, None).unwrap();
 
         let import_config = json!({
             settings::CONFIG_WALLET_NAME: settings::DEFAULT_WALLET_NAME,
             settings::CONFIG_WALLET_KEY: settings::DEFAULT_WALLET_KEY,
-            settings::CONFIG_EXPORTED_WALLET_PATH: export_path,
+            settings::CONFIG_EXPORTED_WALLET_PATH: export_wallet_path.path,
             settings::CONFIG_WALLET_BACKUP_KEY: bad_backup,
         }).to_string();
-        assert_eq!(import(&import_config), Err(WalletError::CommonError(error::LIBINDY_INVALID_STRUCTURE.code_num)));
-
-        ::api::vcx::vcx_shutdown(true);
-        delete_import_wallet_path(export_path);
+        let res = import(&import_config).unwrap_err();
+        assert_eq!(res.kind(), VcxErrorKind::LibindyInvalidStructure);
     }
 
     #[test]
     fn test_add_new_record_with_no_tag() {
-        init!("false");
+        let _setup = SetupLibraryWallet::init();
 
-        let record = "Record Value";
-        let record_type = "Type";
-        let id = "123";
-        let wallet_n = "test_add_new_record_with_no_tag";
+        let (record_type, id, record) = _record();
 
         add_record(record_type, id, record, None).unwrap();
     }
 
     #[test]
     fn test_add_duplicate_record_fails() {
-        init!("false");
+        let _setup = SetupLibraryWallet::init();
 
-        let record = "Record Value";
-        let record_type = "Type";
-        let id = "123";
-        let wallet_n = "test_add_duplicate_record_fails";
+        let (record_type, id, record) = _record();
 
         add_record(record_type, id, record, None).unwrap();
+
         let rc = add_record(record_type, id, record, None);
-        assert_eq!(rc, Err(error::DUPLICATE_WALLET_RECORD.code_num));
+        assert_eq!(rc.unwrap_err().kind(), VcxErrorKind::DuplicationWalletRecord);
     }
 
     #[test]
     fn test_add_record_with_same_id_but_different_type_success() {
-        init!("false");
+        let _setup = SetupLibraryWallet::init();
 
-        let record = "Record Value";
+        let (_, id, record) = _record();
+
         let record_type = "Type";
         let record_type2 = "Type2";
-        let id = "123";
-        let wallet_n = "test_add_duplicate_record_fails";
 
         add_record(record_type, id, record, None).unwrap();
         add_record(record_type2, id, record, None).unwrap();
@@ -427,7 +494,7 @@ pub mod tests {
 
     #[test]
     fn test_retrieve_missing_record_fails() {
-        init!("false");
+        let _setup = SetupLibraryWallet::init();
 
         let record_type = "Type";
         let id = "123";
@@ -436,20 +503,17 @@ pub mod tests {
             "retrieveValue": false,
             "retrieveTags": false
         }).to_string();
-        let wallet_n = "test_retrieve_missing_record_fails";
 
         let rc = get_record(record_type, id, &options);
-        assert_eq!(rc, Err(error::WALLET_RECORD_NOT_FOUND.code_num));
+        assert_eq!(rc.unwrap_err().kind(), VcxErrorKind::WalletRecordNotFound);
     }
 
     #[test]
     fn test_retrieve_record_success() {
-        init!("false");
+        let _setup = SetupLibraryWallet::init();
 
-        let record = "Record Value";
-        let record_type = "Type";
-        let id = "123";
-        let wallet_n = "test_retrieve_record_success";
+        let (record_type, id, record) = _record();
+
         let options = json!({
             "retrieveType": true,
             "retrieveValue": true,
@@ -465,23 +529,20 @@ pub mod tests {
 
     #[test]
     fn test_delete_record_fails_with_no_record() {
-        init!("false");
-        let record_type = "Type";
-        let id = "123";
+        let _setup = SetupLibraryWallet::init();
+
+        let (record_type, id, _) = _record();
 
         let rc = delete_record(record_type, id);
-        assert_eq!(rc, Err(error::WALLET_RECORD_NOT_FOUND.code_num));
-
+        assert_eq!(rc.unwrap_err().kind(), VcxErrorKind::WalletRecordNotFound);
     }
 
     #[test]
     fn test_delete_record_success() {
-        init!("false");
+        let _setup = SetupLibraryWallet::init();
 
-        let record = "Record Value";
-        let record_type = "Type";
-        let id = "123";
-        let wallet_n = "test_delete_record_success";
+        let (record_type, id, record) = _record();
+
         let options = json!({
             "retrieveType": true,
             "retrieveValue": true,
@@ -491,31 +552,27 @@ pub mod tests {
         add_record(record_type, id, record, None).unwrap();
         delete_record(record_type, id).unwrap();
         let rc = get_record(record_type, id, &options);
-        assert_eq!(rc, Err(error::WALLET_RECORD_NOT_FOUND.code_num));
+        assert_eq!(rc.unwrap_err().kind(), VcxErrorKind::WalletRecordNotFound);
     }
 
     #[test]
     fn test_update_record_value_fails_with_no_initial_record() {
-        init!("false");
+        let _setup = SetupLibraryWallet::init();
 
-        let record = "Record Value";
-        let record_type = "Type";
-        let id = "123";
-        let wallet_n = "test_update_record_value_fails_with_no_initial_record";
+        let (record_type, id, record) = _record();
 
         let rc = update_record_value(record_type, id, record);
-        assert_eq!(rc, Err(error::WALLET_RECORD_NOT_FOUND.code_num));
+        assert_eq!(rc.unwrap_err().kind(), VcxErrorKind::WalletRecordNotFound);
     }
 
     #[test]
     fn test_update_record_value_success() {
-        init!("false");
+        let _setup = SetupLibraryWallet::init();
 
         let initial_record = "Record1";
         let changed_record = "Record2";
         let record_type = "Type";
         let id = "123";
-        let wallet_n = "test_update_record_value_success";
         let options = json!({
             "retrieveType": true,
             "retrieveValue": true,

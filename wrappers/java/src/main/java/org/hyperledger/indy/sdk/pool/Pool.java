@@ -73,6 +73,22 @@ public class Pool extends IndyJava.API implements AutoCloseable {
 			future.complete(result);
 		}
 	};
+
+	/**
+	 * Callback used when listPools completes.
+	 */
+	private static Callback listPoolsCb = new Callback() {
+
+		@SuppressWarnings({"unused", "unchecked"})
+		public void callback(int xcommand_handle, int err, String metadata) {
+
+			CompletableFuture<String> future = (CompletableFuture<String>) removeFuture(xcommand_handle);
+			if (! checkResult(future, err)) return;
+
+			String result = metadata;
+			future.complete(result);
+		}
+	};
 	
 	/*
 	 * STATIC METHODS
@@ -115,9 +131,15 @@ public class Pool extends IndyJava.API implements AutoCloseable {
 	 * {
 	 *     "timeout": int (optional), timeout for network request (in sec).
 	 *     "extended_timeout": int (optional), extended timeout for network request (in sec).
-	 *     "preordered_nodes": array[string] -  (optional), names of nodes which will have a priority during request sending:
-	 *         [ "name_of_1st_prior_node",  "name_of_2nd_prior_node", .... ]
-	 *         Note: Not specified nodes will be placed in a random way.
+	 *     "preordered_nodes": array(string) -  (optional), names of nodes which will have a priority during request sending:
+	 *          ["name_of_1st_prior_node",  "name_of_2nd_prior_node", .... ]
+	 *          This can be useful if a user prefers querying specific nodes.
+	 *          Assume that `Node1` and `Node2` nodes reply faster.
+	 *          If you pass them Libindy always sends a read request to these nodes first and only then (if not enough) to others.
+	 *          Note: Nodes not specified will be placed randomly.
+	 *     "number_read_nodes": int (optional) - the number of nodes to send read requests (2 by default)
+	 *          By default Libindy sends a read requests to 2 nodes in the pool.
+	 *          If response isn't received or `state proof` is invalid Libindy sends the request again but to 2 (`number_read_nodes`) * 2 = 4 nodes and so far until completion.
 	 * }
 	 *
 	 * @return A future that resolves to an opened Pool instance.
@@ -247,6 +269,28 @@ public class Pool extends IndyJava.API implements AutoCloseable {
 				commandHandle,
 				protocolVersion,
 				voidCb);
+
+		checkResult(future, result);
+
+		return future;
+	}
+
+	/**
+	 * Lists names of created pool ledgers
+	 *
+	 * @return A future resolving to a list of pools: [{
+	 *     "pool": string - Name of pool ledger stored in the wallet.
+	 *   }]
+	 * @throws IndyException Thrown if an error occurs when calling the underlying SDK.
+	 */
+	public static CompletableFuture<String> listPools() throws IndyException {
+
+		CompletableFuture<String> future = new CompletableFuture<String>();
+		int commandHandle = addFuture(future);
+
+		int result = LibIndy.api.indy_list_pools(
+				commandHandle,
+				listPoolsCb);
 
 		checkResult(future, result);
 

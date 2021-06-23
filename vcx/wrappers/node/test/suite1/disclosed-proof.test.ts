@@ -127,6 +127,24 @@ describe('DisclosedProof', () => {
     })
   })
 
+  describe('getProofMsg:', () => {
+    it('success', async () => {
+      const data = await dataDisclosedProofCreateWithRequest()
+      const disclosedProof = await disclosedProofCreateWithRequest(data)
+      const msg = await disclosedProof.getProofMessage()
+      assert(msg)
+    })
+  })
+
+  describe('getRejectMsg:', () => {
+    it('success', async () => {
+      const data = await dataDisclosedProofCreateWithRequest()
+      const disclosedProof = await disclosedProofCreateWithRequest(data)
+      const msg = await disclosedProof.getRejectMessage()
+      assert(msg)
+    })
+  })
+
   describe('sendProof:', () => {
     it('success', async () => {
       const data = await dataDisclosedProofCreateWithRequest()
@@ -175,6 +193,21 @@ describe('DisclosedProof', () => {
         selfAttestedAttrs: mapValues(attrs, () => valSelfAttested)
       })
       await disclosedProof.sendProof(data.connection)
+    })
+  })
+
+  describe('rejectProof:', async () => {
+    it('success', async () => {
+      const data = await dataDisclosedProofCreateWithRequest()
+      const disclosedProof = await disclosedProofCreateWithRequest(data)
+      await disclosedProof.rejectProof(data.connection)
+    })
+  })
+
+  describe('declinePresentationRequest:', () => {
+    it('success', async () => {
+      const data = await dataDisclosedProofCreateWithRequest()
+      await disclosedProofCreateWithRequest(data)
     })
   })
 

@@ -36,7 +36,7 @@ pub static INVALID_ATTRIBUTES_STRUCTURE: Error = Error{code_num:1021, message: "
 pub static BIG_NUMBER_ERROR: Error = Error{code_num: 1022, message: "Could not encode string to a big integer."};
 pub static INVALID_PROOF: Error = Error{code_num: 1023, message: "Proof had invalid format"};
 pub static INVALID_GENESIS_TXN_PATH: Error = Error{code_num: 1024, message: "Must have valid genesis txn file path"};
-pub static CREATE_POOL_CONFIG_PARAMETERS: Error = Error{code_num: 1025, message: "Parameters for creating pool config are incorrect."};
+pub static POOL_LEDGER_CONNECT: Error = Error{code_num: 1025, message: "Connection to Pool Ledger."};
 pub static CREATE_POOL_CONFIG: Error = Error{code_num: 1026, message: "Formatting for Pool Config are incorrect."};
 pub static INVALID_PROOF_CREDENTIAL_DATA: Error = Error{code_num: 1027, message: "The Proof received does not have valid credentials listed."};
 pub static INDY_SUBMIT_REQUEST_ERR: Error = Error{code_num: 1028, message: "Call to indy submit request failed"};
@@ -50,7 +50,7 @@ pub static UNKNOWN_LIBINDY_ERROR: Error = Error{code_num: 1035, message: "Unknow
 pub static INVALID_CREDENTIAL_DEF_JSON: Error = Error{code_num: 1036, message: "Credential Def not in valid json"};
 pub static INVALID_CREDENTIAL_DEF_HANDLE: Error = Error{code_num: 1037, message: "Invalid Credential Definition handle"};
 pub static TIMEOUT_LIBINDY_ERROR: Error = Error{code_num: 1038, message: "Waiting for callback timed out"};
-pub static CREDENTIAL_DEF_ALREADY_CREATED: Error = Error{code_num: 1039, message: "Can't create, Credential Def already on ledger"};
+pub static CREDENTIAL_DEF_ALREADY_CREATED: Error = Error{code_num: 1039, message: "Can't create, Credential Def already exists in wallet"};
 pub static INVALID_SCHEMA_SEQ_NO: Error = Error{code_num: 1040, message: "No Schema for that schema sequence number"};
 pub static INVALID_SCHEMA_CREATION: Error = Error{code_num: 1041, message: "Could not create schema"};
 pub static INVALID_SCHEMA_HANDLE: Error = Error{code_num: 1042, message: "Invalid Schema Handle"};
@@ -86,7 +86,7 @@ pub static NO_PAYMENT_INFORMATION: Error = Error { code_num: 1071, message: "No 
 pub static DUPLICATE_WALLET_RECORD: Error = Error{ code_num: 1072, message: "Record already exists in the wallet"};
 pub static WALLET_RECORD_NOT_FOUND: Error = Error{ code_num: 1073, message: "Wallet record not found"};
 pub static IOERROR: Error = Error { code_num: 1074, message: "IO Error, possibly creating a backup wallet"};
-pub static INVALID_WALLET_STORAGE_PARAMETER: Error = Error { code_num: 1075, message: "Wallet Storage Parameter Either Malformed or Missing"};
+pub static WALLET_ACCESS_FAILED: Error = Error { code_num: 1075, message: "Attempt to open wallet with invalid credentials"};
 pub static MISSING_WALLET_NAME: Error = Error { code_num: 1076, message: "Missing wallet name in config"};
 pub static MISSING_EXPORTED_WALLET_PATH: Error = Error { code_num: 1077, message: "Missing exported wallet path in config"};
 pub static MISSING_BACKUP_KEY: Error = Error { code_num: 1078, message: "Missing exported backup key in config"};
@@ -107,6 +107,14 @@ pub static INVALID_REV_ENTRY: Error = Error{ code_num: 1092, message: "Unable to
 pub static INVALID_REVOCATION_TIMESTAMP: Error = Error{ code_num: 1093, message: "Invalid Credential Revocation timestamp"};
 pub static UNKNOWN_SCHEMA_REJECTION: Error = Error{ code_num: 1094, message: "Unknown Rejection of Schema Creation, refer to libindy documentation"};
 pub static INVALID_REV_REG_DEF_CREATION: Error = Error{ code_num: 1095, message: "Failed to create Revocation Registration Definition"};
+/* EC 1096 - 1099 are reserved for proprietary forks of libVCX */
+pub static INVALID_ATTACHMENT_ENCODING: Error = Error { code_num: 1100, message: "Failed to decode attachment"};
+pub static UNKNOWN_ATTACHMENT_ENCODING: Error = Error { code_num: 1101, message: "This type of attachment can not be used"};
+pub static UNKNOWN_MIME_TYPE: Error = Error { code_num: 1102, message: "Unknown mime type"};
+pub static ACTION_NOT_SUPPORTED: Error = Error { code_num: 1103, message: "Action is not supported"};
+pub static INVALID_REDIRECT_DETAILS: Error = Error{code_num: 1104, message: "Invalid redirect details structure"};
+/* EC 1105 is reserved for proprietary forks of libVCX */
+pub static NO_AGENT_INFO: Error = Error{code_num: 1106, message: "Agent pairwise information not found"};
 
 lazy_static! {
     static ref ERROR_C_MESSAGES: HashMap<u32, CString> = {
@@ -138,7 +146,7 @@ lazy_static! {
         insert_c_message(&mut m, &INVALID_GENESIS_TXN_PATH);
         insert_c_message(&mut m, &CREATE_POOL_CONFIG);
         insert_c_message(&mut m, &INVALID_PROOF_CREDENTIAL_DATA);
-        insert_c_message(&mut m, &CREATE_POOL_CONFIG_PARAMETERS);
+        insert_c_message(&mut m, &POOL_LEDGER_CONNECT);
         insert_c_message(&mut m, &INDY_SUBMIT_REQUEST_ERR);
         insert_c_message(&mut m, &BUILD_CREDENTIAL_DEF_REQ_ERR);
         insert_c_message(&mut m, &NO_POOL_OPEN);
@@ -182,7 +190,7 @@ lazy_static! {
         insert_c_message(&mut m, &DUPLICATE_WALLET_RECORD);
         insert_c_message(&mut m, &WALLET_RECORD_NOT_FOUND);
         insert_c_message(&mut m, &IOERROR);
-        insert_c_message(&mut m, &INVALID_WALLET_STORAGE_PARAMETER);
+        insert_c_message(&mut m, &WALLET_ACCESS_FAILED);
         insert_c_message(&mut m, &OBJECT_CACHE_ERROR);
         insert_c_message(&mut m, &NO_PAYMENT_INFORMATION);
         insert_c_message(&mut m, &INDY_DUPLICATE_WALLET_RECORD);
@@ -207,6 +215,12 @@ lazy_static! {
         insert_c_message(&mut m, &UKNOWN_LIBINDY_TRANSACTION_REJECTION);
         insert_c_message(&mut m, &MISSING_PAYMENT_METHOD);
         insert_c_message(&mut m, &LOGGING_ERROR);
+        insert_c_message(&mut m, &INVALID_ATTACHMENT_ENCODING);
+        insert_c_message(&mut m, &UNKNOWN_ATTACHMENT_ENCODING);
+        insert_c_message(&mut m, &UNKNOWN_MIME_TYPE);
+        insert_c_message(&mut m, &ACTION_NOT_SUPPORTED);
+        insert_c_message(&mut m, &INVALID_REDIRECT_DETAILS);
+        insert_c_message(&mut m, &NO_AGENT_INFO);
 
         m
     };
@@ -223,15 +237,7 @@ fn insert_c_message(map: &mut HashMap<u32, CString>, error: &Error) {
 
 }
 
-// Helper function for static defining of error messages. Does limited checking that it can.
-fn insert_message(map: &mut HashMap<u32, &'static str>, error: &Error) {
-    if map.contains_key(&error.code_num) {
-        panic!("Error Code number was repeated which is not allowed! (likely a copy/paste error)")
-    }
-    map.insert(error.code_num, error.message);
-
-}
-
+#[derive(Clone, Copy)]
 pub struct Error {
     pub code_num: u32,
     pub message: &'static str
@@ -255,22 +261,6 @@ pub fn error_message(code_num:&u32) -> String {
     match ERROR_C_MESSAGES.get(code_num) {
         Some(msg) => msg.to_str().unwrap().to_string(),
         None => error_message(&UNKNOWN_ERROR.code_num),
-    }
-}
-
-pub fn error_string(code_num:u32) -> String {
-    match ERROR_C_MESSAGES.get(&code_num) {
-        Some(msg) => format!("{}-{}", code_num, msg.to_str().unwrap_or(UNKNOWN_ERROR.message)),
-        None => format!("{}-{}", code_num, UNKNOWN_ERROR.message),
-    }
-}
-
-pub fn map_libindy_err(check_rtn: u32, default_rtn: u32) -> u32 {
-    match check_rtn {
-        x if x == TIMEOUT_LIBINDY_ERROR.code_num => {
-            x
-        },
-        _ => default_rtn
     }
 }
 
@@ -353,7 +343,7 @@ mod tests {
     }
     #[test]
     fn test_error_config() {
-        assert_eq!(error_message(&CREATE_POOL_CONFIG_PARAMETERS.code_num), CREATE_POOL_CONFIG_PARAMETERS.message);
+        assert_eq!(error_message(&POOL_LEDGER_CONNECT.code_num), POOL_LEDGER_CONNECT.message);
     }
     #[test]
     fn test_error_pool_config() {
@@ -397,6 +387,7 @@ mod tests {
         assert_eq!(error_message(&TIMEOUT_LIBINDY_ERROR.code_num), TIMEOUT_LIBINDY_ERROR.message);
     }
 
+    #[test]
     fn test_invalid_credential_def_json() {
         assert_eq!(error_message(&INVALID_CREDENTIAL_DEF_JSON.code_num), INVALID_CREDENTIAL_DEF_JSON.message);
     }
@@ -430,24 +421,12 @@ mod tests {
     }
 
     #[test]
-    fn test_invalid_master_secret() {
-        assert_eq!(error_message(&INVALID_MASTER_SECRET.code_num), INVALID_MASTER_SECRET.message);
+    fn test_invalid_redirect_details() {
+        assert_eq!(error_message(&INVALID_REDIRECT_DETAILS.code_num), INVALID_REDIRECT_DETAILS.message);
     }
 
     #[test]
-    fn test_map_libindy_err() {
-        let default = UNKNOWN_ERROR.code_num;
-        // Pass in arbitrary check val, rtn default err
-        assert_eq!(map_libindy_err(INVALID_SCHEMA_SEQ_NO.code_num, default),
-                   default);
-        // Pass libindy timeout, rtn Err(libindy timeout)
-        assert_eq!(map_libindy_err(TIMEOUT_LIBINDY_ERROR.code_num, default),
-                   TIMEOUT_LIBINDY_ERROR.code_num);
-
-        let fn_map_err = |x: Result<u32, u32>| x;
-        // map_libindy_err not called with Ok returned
-        assert_eq!(fn_map_err(Ok(0)).map_err(|x| map_libindy_err(x, default)), Ok(0));
-        // map_libindy_err called with Err returned
-        assert_eq!(fn_map_err(Err(0)).map_err(|x| map_libindy_err(x, default)), Err(default))
+    fn test_invalid_master_secret() {
+        assert_eq!(error_message(&INVALID_MASTER_SECRET.code_num), INVALID_MASTER_SECRET.message);
     }
 }

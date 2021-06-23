@@ -5,7 +5,7 @@ import com.evernym.sdk.vcx.connection.ConnectionApi;
 import com.evernym.sdk.vcx.credential.CredentialApi;
 import com.evernym.sdk.vcx.credentialDef.CredentialDefApi;
 import com.jayway.jsonpath.JsonPath;
-import java9.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletableFuture;
 import org.awaitility.Awaitility;
 
 import java.util.concurrent.ExecutionException;
@@ -65,8 +65,21 @@ class TestHelper {
 
             return result;
         }
-
     }
+
+    static int _createConnectionWithInvite(String inviteDetails) throws VcxException {
+        CompletableFuture<Integer> futureResult = ConnectionApi.vcxCreateConnectionWithInvite(TestHelper.getConnectionId(), inviteDetails);
+        Awaitility.await().until(futureResult::isDone);
+
+        Integer result = futureResult.getNow(-1);
+        if(result == -1){
+            throw new VcxException("Unable to create connection handle",0);
+        }else{
+//            System.out.println("Connection created with connection handle => "  + result);
+            return result;
+        }
+    }
+
     static int _createCredential() throws VcxException, ExecutionException, InterruptedException {
         CompletableFuture<Integer> futureResult = CredentialApi.credentialCreateWithOffer("1",JsonPath.read(offer,"$").toString());
         Awaitility.await().until(futureResult::isDone);

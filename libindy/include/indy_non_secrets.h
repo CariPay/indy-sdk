@@ -155,7 +155,7 @@ extern "C" {
     ///  {
     ///    retrieveType: (optional, false by default) Retrieve record type,
     ///    retrieveValue: (optional, true by default) Retrieve record value,
-    ///    retrieveTags: (optional, true by default) Retrieve record tags
+    ///    retrieveTags: (optional, false by default) Retrieve record tags
     ///  }
     /// #Returns
     /// wallet record json:
@@ -199,7 +199,7 @@ extern "C" {
     ///    retrieveTotalCount: (optional, false by default) Calculate total count,
     ///    retrieveType: (optional, false by default) Retrieve record type,
     ///    retrieveValue: (optional, true by default) Retrieve record value,
-    ///    retrieveTags: (optional, true by default) Retrieve record tags,
+    ///    retrieveTags: (optional, false by default) Retrieve record tags,
     ///  }
     /// #Returns
     /// search_handle: Wallet search handle that can be used later
@@ -226,7 +226,7 @@ extern "C" {
     ///  {
     ///    retrieveType: (optional, false by default) Retrieve record type,
     ///    retrieveValue: (optional, true by default) Retrieve record value,
-    ///    retrieveTags: (optional, true by default) Retrieve record tags
+    ///    retrieveTags: (optional, false by default) Retrieve record tags
     ///  }
     /// #Returns
     /// wallet record json:
@@ -257,9 +257,9 @@ extern "C" {
                                                                       indy_error_t  err)
                                                 );
 
+
 #ifdef __cplusplus
 }
 #endif
 
 #endif
-

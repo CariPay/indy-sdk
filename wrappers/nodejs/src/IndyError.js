@@ -1,7 +1,6 @@
-var util = require('util')
-var capi = require('./indyBinding')
+const capi = require('./indyBinding')
 
-var errors = {
+const errors = {
   100: 'CommonInvalidParam1',
   101: 'CommonInvalidParam2',
   102: 'CommonInvalidParam3',
@@ -17,6 +16,8 @@ var errors = {
   112: 'CommonInvalidState',
   113: 'CommonInvalidStructure',
   114: 'CommonIOError',
+  115: 'CommonInvalidParam13',
+  116: 'CommonInvalidParam14',
   200: 'WalletInvalidHandle',
   201: 'WalletUnknownTypeError',
   202: 'WalletTypeAlreadyRegisteredError',
@@ -25,6 +26,13 @@ var errors = {
   205: 'WalletIncompatiblePoolError',
   206: 'WalletAlreadyOpenedError',
   207: 'WalletAccessFailed',
+  208: 'WalletInputError',
+  209: 'WalletDecodingError',
+  210: 'WalletStorageError',
+  211: 'WalletEncryptionError',
+  212: 'WalletItemNotFound',
+  213: 'WalletItemAlreadyExists',
+  214: 'WalletQueryError',
   300: 'PoolLedgerNotCreatedError',
   301: 'PoolLedgerInvalidPoolHandle',
   302: 'PoolLedgerTerminated',
@@ -48,32 +56,35 @@ var errors = {
   702: 'PaymentInsufficientFundsError',
   703: 'PaymentSourceDoesNotExistError',
   704: 'PaymentOperationNotSupportedError',
-  705: 'PaymentExtraFundsError'
+  705: 'PaymentExtraFundsError',
+  706: 'TransactionNotAllowedError'
 }
 
-function IndyError (err) {
-  Error.call(this)
-  Error.captureStackTrace(this, this.constructor)
-  this.name = this.constructor.name
-  if (errors.hasOwnProperty(err)) {
-    this.message = errors[err]
-    this.indyCode = err
-    this.indyName = errors[err]
-    try {
-      this.indyCurrentErrorJson = capi.getCurrentError()
-      var details = JSON.parse(this.indyCurrentErrorJson)
-      if (typeof details.message === 'string') {
-        this.indyMessage = details.message
-      }
-      if (typeof details.backtrace === 'string') {
-        this.indyBacktrace = details.backtrace
-      }
-    } catch (e) {
+class IndyError extends Error {
+  constructor (err) {
+    super()
+
+    this.name = this.constructor.name
+    Error.captureStackTrace(this, IndyError)
+
+    if (Object.prototype.hasOwnProperty.call(errors, err)) {
+      this.message = errors[err]
+      this.indyCode = err
+      this.indyName = errors[err]
+      try {
+        this.indyCurrentErrorJson = capi.getCurrentError()
+        const details = JSON.parse(this.indyCurrentErrorJson)
+        if (typeof details.message === 'string') {
+          this.indyMessage = details.message
+        }
+        if (typeof details.backtrace === 'string') {
+          this.indyBacktrace = details.backtrace
+        }
+      } catch (e) {}
+    } else {
+      this.message = err + ''
     }
-  } else {
-    this.message = (err + '')
   }
 }
-util.inherits(IndyError, Error)
 
 module.exports = IndyError

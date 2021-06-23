@@ -8,25 +8,26 @@ RUN apt-get update -y && apt-get install -y \
 	python3.5 \
 	python3-pip \
 	python-setuptools \
-	ipython \
-	ipython-notebook \
 	apt-transport-https \
 	ca-certificates \
 	software-properties-common
 
 WORKDIR /home/indy
 
+RUN pip3 install --upgrade pip
 RUN pip3 install -U \
 	pip \
+	ipython-notebook \
+      ipython==7.9 \
 	setuptools \
 	jupyter \
-	python3-indy==1.6.8-dev-906
+	python3-indy==1.11.0
 
-RUN apt-key adv --keyserver keyserver.ubuntu.com --recv-keys 68DB5E88 \
-    && add-apt-repository "deb https://repo.sovrin.org/sdk/deb xenial master" \
+RUN apt-key adv --keyserver keyserver.ubuntu.com --recv-keys CE7709D068DB5E88 \
+    && add-apt-repository "deb https://repo.sovrin.org/sdk/deb xenial stable" \
     && apt-get update \
     && apt-get install -y \
-    libindy=1.6.8~906
+    libindy=1.11.0
 
 USER indy
 

@@ -27,7 +27,7 @@ import com.evernym.sdk.vcx.utils.PostMsgFailureException;
 import com.evernym.sdk.vcx.vcx.AlreadyInitializedException;
 import com.evernym.sdk.vcx.vcx.BigNumberErrorException;
 import com.evernym.sdk.vcx.vcx.CreatePoolConfigException;
-import com.evernym.sdk.vcx.vcx.CreatePoolConfigParamsException;
+import com.evernym.sdk.vcx.vcx.PoolLedgerConnectException;
 import com.evernym.sdk.vcx.vcx.IndySubmitRequestErrorException;
 import com.evernym.sdk.vcx.vcx.InvalidAttributeStructureException;
 import com.evernym.sdk.vcx.vcx.InvalidDIDException;
@@ -60,7 +60,12 @@ import com.evernym.sdk.vcx.wallet.WalletAleradyOpenException;
 import com.evernym.sdk.vcx.wallet.WalletAlreadyExistsException;
 import com.evernym.sdk.vcx.wallet.WalletItemAlreadyExistsException;
 import com.evernym.sdk.vcx.wallet.WalletItemNotFoundException;
+import com.evernym.sdk.vcx.wallet.WalletCreationException;
+import com.evernym.sdk.vcx.wallet.WalletAccessFailedException;
+import com.evernym.sdk.vcx.NoAgentInfoException;
 
+import com.sun.jna.ptr.PointerByReference;
+import org.json.JSONObject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -72,6 +77,10 @@ public class VcxException extends Exception {
     private static final Logger logger = LoggerFactory.getLogger("VcxException");
     private static final long serialVersionUID = 2650355290834266234L;
     private int sdkErrorCode;
+    private String  sdkMessage;
+    private String  sdkFullMessage;
+    private String  sdkCause;
+    private String sdkBacktrace;
 
     /**
      * Initializes a new VcxException with the specified message.
@@ -81,6 +90,24 @@ public class VcxException extends Exception {
     protected VcxException(String message, int sdkErrorCode) {
         super(message);
         this.sdkErrorCode = sdkErrorCode;
+        setSdkErrorDetails();
+    }
+
+    private void setSdkErrorDetails(){
+        PointerByReference errorDetailsJson = new PointerByReference();
+
+        LibVcx.api.vcx_get_current_error(errorDetailsJson);
+
+        try {
+            JSONObject errorDetails = new JSONObject(errorDetailsJson.getValue().getString(0));
+            this.sdkMessage = errorDetails.optString("error");
+            this.sdkFullMessage = errorDetails.optString("message");
+            this.sdkCause = errorDetails.optString("cause");
+            this.sdkBacktrace = errorDetails.optString("backtrace");
+        } catch(Exception e) {
+           // TODO
+           e.printStackTrace();
+        }
     }
 
     /**
@@ -91,6 +118,34 @@ public class VcxException extends Exception {
     public int getSdkErrorCode() {
         return sdkErrorCode;
     }
+
+    /**
+     * Gets the SDK error message for the exception.
+     *
+     * @return The SDK error message used to construct the exception.
+     */
+    public String  getSdkMessage() {return sdkMessage;}
+
+    /**
+     * Gets the SDK full error message for the exception.
+     *
+     * @return The SDK full error message used to construct the exception.
+     */
+    public String  getSdkFullMessage() {return sdkFullMessage;}
+
+    /**
+     * Gets the SDK error cause for the exception.
+     *
+     * @return The SDK error cause used to construct the exception.
+     */
+    public String  getSdkCause() {return sdkCause;}
+
+    /**
+     * Gets the SDK error backtrace for the exception.
+     *
+     * @return The SDK error backtrace used to construct the exception.
+     */
+    public String  getSdkBacktrace() {return sdkBacktrace;}
 
     /**
      * Initializes a new VcxException using the specified SDK error code.
@@ -158,8 +213,8 @@ public class VcxException extends Exception {
                 return new InvalidProofException();
             case INVALID_GENESIS_TXN_PATH:
                 return new InvalidGenesisTxnPathException();
-            case CREATE_POOL_CONFIG_PARAMETERS:
-                return new CreatePoolConfigParamsException();
+            case POOL_LEDGER_CONNECT:
+                return new PoolLedgerConnectException();
             case CREATE_POOL_CONFIG:
                 return new CreatePoolConfigException();
             case INVALID_PROOF_CREDENTIAL_DATA:
@@ -228,6 +283,14 @@ public class VcxException extends Exception {
                 return new CreateProofErrorException();
             case INSUFFICIENT_TOKEN_AMOUNT:
                 return new InsufficientTokenAmountException();
+            case ACTION_NOT_SUPPORTED:
+                return new ActionNotSupportedException();
+            case INVALID_WALLET_CREATION:
+                return new WalletCreationException();
+            case WALLET_ACCESS_FAILED:
+                return new WalletAccessFailedException();
+            case NO_AGENT_INFO:
+                return new NoAgentInfoException();
             case UNIDENTIFIED_ERROR_CODE:
                 String message = String.format("An unmapped error with the code '%s' was returned by the SDK.", sdkErrorCode);
                 return new VcxException(message, sdkErrorCode);

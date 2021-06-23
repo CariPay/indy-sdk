@@ -1,28 +1,28 @@
-extern crate libc;
-
 use futures::Future;
-
-use settings;
-use utils::libindy::error_codes::map_rust_indy_sdk_error;
 use indy::did;
 
-pub fn create_and_store_my_did(seed: Option<&str>) -> Result<(String, String), u32> {
-    if settings::test_indy_mode_enabled() {
+use settings;
+use utils::libindy::wallet::get_wallet_handle;
+use error::prelude::*;
+
+pub fn create_and_store_my_did(seed: Option<&str>, method_name: Option<&str>) -> VcxResult<(String, String)> {
+    if settings::indy_mocks_enabled() {
         return Ok((::utils::constants::DID.to_string(), ::utils::constants::VERKEY.to_string()));
     }
 
-    let my_did_json = seed.map_or("{}".to_string(), |seed| format!("{{\"seed\":\"{}\" }}", seed));
-    did::create_and_store_my_did(::utils::libindy::wallet::get_wallet_handle(), &my_did_json)
+    let my_did_json = json!({"seed": seed, "method_name": method_name});
+
+    did::create_and_store_my_did(get_wallet_handle(), &my_did_json.to_string())
         .wait()
-        .map_err(map_rust_indy_sdk_error)
+        .map_err(VcxError::from)
 }
 
-pub fn get_local_verkey(did: &str) -> Result<String, u32> {
-    if settings::test_indy_mode_enabled() {
+pub fn get_local_verkey(did: &str) -> VcxResult<String> {
+    if settings::indy_mocks_enabled() {
         return Ok(::utils::constants::VERKEY.to_string());
     }
 
-    did::key_for_local_did(::utils::libindy::wallet::get_wallet_handle(), did)
+    did::key_for_local_did(get_wallet_handle(), did)
         .wait()
-        .map_err(map_rust_indy_sdk_error)
+        .map_err(VcxError::from)
 }

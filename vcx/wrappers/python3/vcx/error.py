@@ -1,8 +1,11 @@
+import json
+
 LIBRARY = "libvcx.so"
 from vcx.cdll import _cdll
 from enum import IntEnum
-from ctypes import c_char_p, cast, c_uint32
+from ctypes import c_char_p, byref, c_uint32
 import logging
+from typing import Optional
 
 
 class ErrorCode(IntEnum):
@@ -34,7 +37,7 @@ class ErrorCode(IntEnum):
     BigNumberError = 1022,
     InvalidProof = 1023,
     InvalidGenesisTxnPath = 1024,
-    CreatePoolConfigParameters = 1025,
+    PoolLedgerConnect = 1025,
     CreatePoolConifg = 1026,
     InvalidProofCredentialData = 1027,
     IndySubmitRequestError = 1028,
@@ -55,7 +58,7 @@ class ErrorCode(IntEnum):
     InvalidMasterSecret = 1043,
     AlreadyInitialized = 1044,
     InvalidInviteDetails = 1045,
-    InvalidSelfAttestedVal =  1046,
+    InvalidSelfAttestedVal = 1046,
     InvalidPredicate = 1047,
     InvalidObjHandle = 1048,
     InvalidDisclosedProofHandle = 1049,
@@ -84,7 +87,7 @@ class ErrorCode(IntEnum):
     DuplicateWalletRecord = 1072,
     WalletRecordNotFound = 1073,
     IOError = 1074,
-    InvalidWalletStorageParam = 1075,
+    WalletAccessFailed = 1075,
     MissingWalletName = 1076,
     MissingExportedWalletPath = 1077,
     MissingBackupKey = 1078,
@@ -104,15 +107,32 @@ class ErrorCode(IntEnum):
     InvalidRevEntry = 1092,
     InvalidRevocationTimestamp = 1093,
     UnknownSchemaRejection = 1094,
-    InvalidRevRegDefCreation = 1095
+    InvalidRevRegDefCreation = 1095,
+    # EC 1096 - 1099 are reserved for proprietary forks of libVCX
+    InvalidAttachmentEncoding = 1100,
+    UnknownAttachmentEncoding = 1101,
+    UnknownMimeType = 1102,
+    ActionNotSupported = 1103,
+    InvalidRedirectDetails = 1104,
+    NoAgentInfo = 1106
 
 
 class VcxError(Exception):
     # error_code: ErrorCode
+    # error_msg: Optional[str] - human-readable error description
+    # sdk_error_full_message: Optional[str] - vcx full error message.
+    # sdk_error_cause: Optional[str] - vcx error cause.
+    # sdk_error_backtrace: Optional[str] - vcx error backtrace.
+    #   Collecting of backtrace can be enabled by setting environment variable `RUST_BACKTRACE=1`
 
-    def __init__(self, error_code: ErrorCode):
+    def __init__(self, error_code: ErrorCode, error_details: Optional[dict] = None):
         self.error_code = error_code
         self.error_msg = error_message(error_code)
+        if error_details:
+            self.error_msg = error_details['error']
+            self.sdk_error_full_message = error_details['message']
+            self.sdk_error_cause = error_details['cause']
+            self.sdk_error_backtrace = error_details['backtrace']
 
 
 def error_message(error_code: int) -> str:
@@ -123,3 +143,15 @@ def error_message(error_code: int) -> str:
     err_msg = getattr(_cdll(), name)(c_error_code)
     logger.debug("error_message: Function %s[%s] returned error_message: %s", name, error_code, err_msg)
     return err_msg.decode()
+
+
+def get_error_details() -> Optional[dict]:
+    logger = logging.getLogger(__name__)
+    logger.debug("get_error_details: >>>")
+
+    error_c = c_char_p()
+    getattr(_cdll(), 'vcx_get_current_error')(byref(error_c))
+    error_details = json.loads(error_c.value.decode()) if error_c.value else None
+
+    logger.debug("get_error_details: <<< error_details: %s", error_details)
+    return error_details

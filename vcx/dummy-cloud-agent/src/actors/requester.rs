@@ -1,14 +1,17 @@
+use actix::prelude::*;
 use failure::{err_msg, Error};
+use futures::*;
+use hyper::{Body, header, Method, Request};
 use hyper::Client;
 use hyper::client::connect::HttpConnector;
 use hyper::rt::Future;
-use hyper::{Body, Method, Request, header};
 
-use actix::prelude::*;
-use actors::RemoteMsg;
+use crate::actors::RemoteMsg;
+use crate::utils::futures::*;
 
-use futures::*;
-use utils::futures::*;
+lazy_static! {
+    pub static ref REQWEST_CLIENT : reqwest::r#async::Client = reqwest::r#async::Client::new();
+}
 
 pub struct Requester {
     client: Client<HttpConnector>,
@@ -48,7 +51,7 @@ impl Requester {
         *req.uri_mut() = endpoint.parse()?;
         req.headers_mut().insert(
             header::CONTENT_TYPE,
-            header::HeaderValue::from_static("application/octet-stream")
+            header::HeaderValue::from_static("application/octet-stream"),
         );
         Ok(req)
     }
@@ -62,7 +65,7 @@ impl Handler<RemoteMsg> for Requester {
     type Result = ResponseFuture<(), Error>;
 
     fn handle(&mut self, msg: RemoteMsg, _: &mut Self::Context) -> Self::Result {
-        trace!("Handler<RemoteMessage>::handle >> {:?}", msg);
+        trace!("Handler<SendRemoteMessage>::handle >> {:?}", msg);
         self.send_message(msg.body, msg.endpoint)
     }
 }

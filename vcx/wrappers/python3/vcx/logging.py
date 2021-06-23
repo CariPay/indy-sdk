@@ -29,9 +29,13 @@ def set_logger(cdll):
         'flush_cb': None
     }
 
-    getattr(cdll, 'vcx_set_logger')(None,
-                                    set_logger.callbacks['enabled_cb'],
-                                    set_logger.callbacks['log_cb'],
-                                    set_logger.callbacks['flush_cb'])
+    level_mapping = {ERROR: 1, WARNING: 2, INFO: 3, DEBUG: 4, TRACE: 5}
+    c_level = c_uint32(level_mapping.get(logging.root.level) or 0)
+
+    getattr(cdll, 'vcx_set_logger_with_max_lvl')(None,
+                                                 set_logger.callbacks['enabled_cb'],
+                                                 set_logger.callbacks['log_cb'],
+                                                 set_logger.callbacks['flush_cb'],
+                                                 c_level)
 
     logger.debug("set_logger: <<<")

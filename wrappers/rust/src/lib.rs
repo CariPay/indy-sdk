@@ -30,6 +30,8 @@ pub mod payments;
 pub mod pairwise;
 pub mod pool;
 pub mod wallet;
+pub mod cache;
+pub mod metrics;
 mod utils;
 
 use std::ffi::CString;
@@ -37,10 +39,26 @@ use std::fmt;
 use std::ptr;
 use std::ffi::CStr;
 
-pub type IndyHandle = i32;
-
 use failure::{Backtrace, Fail};
 
+pub use ffi::{
+    RecordHandle,
+    TailWriterHandle,
+    BlobStorageReaderHandle,
+    BlobStorageReaderCfgHandle,
+    MetadataHandle,
+    Timeout,
+    TailsWriterHandle,
+    IndyHandle,
+    CommandHandle,
+    WalletHandle,
+    PoolHandle,
+    SearchHandle,
+    StorageHandle,
+    INVALID_WALLET_HANDLE,
+    INVALID_POOL_HANDLE,
+    INVALID_COMMAND_HANDLE
+};
 
 /// Set libindy runtime configuration. Can be optionally called to change current params.
 ///
@@ -290,6 +308,10 @@ pub enum ErrorCode
     // Extra funds on inputs
     #[fail(display = "PaymentExtraFundsError")]
     PaymentExtraFundsError = 705,
+
+    // The transaction is not allowed to a requester
+    #[fail(display = "The transaction is not allowed to a requester")]
+    TransactionNotAllowed,
 }
 
 
@@ -318,7 +340,7 @@ pub struct IndyError {
 }
 
 impl Fail for IndyError {
-    fn cause(&self) -> Option<&Fail> {
+    fn cause(&self) -> Option<&dyn Fail> {
         self.error_code.cause()
     }
 
@@ -337,7 +359,18 @@ impl IndyError {
         let mut error_json_p: *const c_char = ptr::null();
 
         unsafe { ffi::indy_get_current_error(&mut error_json_p); }
-        let error_json = rust_str!(error_json_p);
+        let error_json = opt_rust_str!(error_json_p);
+
+        let error_json = match error_json {
+            Some(error_json_) => error_json_,
+            None => {
+                return IndyError {
+                    error_code: ErrorCode::CommonInvalidState,
+                    message: String::from("Invalid ErrorMessage pointer"),
+                    indy_backtrace: None,
+                };
+            }
+        };
 
         match ::serde_json::from_str::<ErrorDetails>(&error_json) {
             Ok(error) => IndyError {

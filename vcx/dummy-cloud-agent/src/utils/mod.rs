@@ -1,10 +1,13 @@
 #[macro_use]
 pub mod futures;
 pub mod rand;
+pub mod wallet;
+pub mod config_env;
 
 #[allow(unused)] // FIXME:
 #[cfg(test)]
 pub mod tests;
+pub mod dyn_lib;
 
 macro_rules! map (
     { $($key:expr => $value:expr),+ } => {

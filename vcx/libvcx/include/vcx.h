@@ -1,6 +1,8 @@
 #ifndef __VCX_H
 #define __VCX_H
 
+#include <stdbool.h>
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -16,10 +18,11 @@ typedef unsigned int vcx_proof_handle_t;
 typedef unsigned int vcx_command_handle_t;
 typedef unsigned int vcx_payment_handle_t;
 typedef unsigned int vcx_wallet_search_handle_t;
-typedef unsigned int vcx_bool_t;
+typedef unsigned bool vcx_bool_t;
 typedef unsigned int count_t;
 typedef unsigned long vcx_price_t;
 typedef unsigned int vcx_u32_t;
+typedef unsigned long long vcx_u64_t;
 
 typedef enum
 {
@@ -187,6 +190,43 @@ vcx_error_t vcx_connection_invite_details(vcx_command_handle_t command_handle,
                                        vcx_bool_t abbreviated,
                                        void (*cb)(vcx_command_handle_t, vcx_error_t, const char*));
 
+/// Get the information about the connection state.
+///
+/// Note: This method can be used for `aries` communication method only.
+///     For other communication method it returns ActionNotSupported error.
+///
+/// #Params
+/// command_handle: command handle to map callback to user context.
+///
+/// connection_handle: was provided during creation. Used to identify connection object
+///
+/// cb: Callback that provides the json string of connection information
+///
+/// # Example
+/// info ->
+///      {
+///         "current": {
+///             "did": <str>
+///             "recipientKeys": array<str>
+///             "routingKeys": array<str>
+///             "serviceEndpoint": <str>,
+///             "protocols": array<str> -  The set of protocol supported by current side.
+///         },
+///         "remote: { <Option> - details about remote connection side
+///             "did": <str> - DID of remote side
+///             "recipientKeys": array<str> - Recipient keys
+///             "routingKeys": array<str> - Routing keys
+///             "serviceEndpoint": <str> - Endpoint
+///             "protocols": array<str> - The set of protocol supported by side. Is filled after DiscoveryFeatures process was completed.
+///          }
+///    }
+///
+/// #Returns
+/// Error code as a u32
+vcx_error_t vcx_connection_info(vcx_command_handle_t command_handle,
+                                vcx_connection_handle_t connection_handle,
+                                void (*cb)(vcx_command_handle_t, vcx_error_t, const char*));
+
 // Releases the connection object by de-allocating memory
 //
 // #Params
@@ -211,7 +251,7 @@ vcx_error_t vcx_connection_serialize(vcx_command_handle_t command_handle,
                                   vcx_connection_handle_t connection_handle,
                                   void (*cb)(vcx_command_handle_t, vcx_error_t, const char*));
 
-// Checks for any state change in the connection and updates the the state attribute
+// Checks for any state change in the connection and updates the state attribute
 //
 // #Params
 // command_handle: command handle to map callback to user context.
@@ -225,6 +265,93 @@ vcx_error_t vcx_connection_serialize(vcx_command_handle_t command_handle,
 vcx_error_t vcx_connection_update_state(vcx_command_handle_t command_handle,
                                      vcx_connection_handle_t connection_handle,
                                      void (*cb)(vcx_command_handle_t, vcx_error_t, vcx_state_t));
+
+/// Update the state of the connection based on the given message.
+///
+/// #Params
+/// command_handle: command handle to map callback to user context.
+///
+/// connection_handle: was provided during creation. Used to identify connection object
+///
+/// message: message to process.
+///
+/// cb: Callback that provides most current state of the connection and error status of request
+///
+/// #Returns
+/// Error code as a u32
+vcx_error_t vcx_connection_update_state_with_message(vcx_command_handle_t command_handle,
+                                                     vcx_connection_handle_t connection_handle,
+                                                     const char *message,
+                                                     void (*cb)(vcx_command_handle_t, vcx_error_t, vcx_state_t));
+
+/// Send trust ping message to the specified connection to prove that two agents have a functional pairwise channel.
+///
+/// Note that this function is useful in case `aries` communication method is used.
+/// In other cases it returns ActionNotSupported error.
+///
+/// #params
+///
+/// command_handle: command handle to map callback to user context.
+///
+/// connection_handle: connection to send message
+///
+/// comment: (Optional) human-friendly description of the ping.
+///
+/// cb: Callback that provides success or failure of request
+///
+/// #Returns
+/// Error code as a u32
+vcx_error_t vcx_connection_send_ping(vcx_u32_t command_handle,
+                                     vcx_connection_handle_t connection_handle,
+                                     const char* comment,
+                                     void (*cb)(vcx_command_handle_t, vcx_error_t));
+
+/// Send discovery features message to the specified connection to discover which features it supports, and to what extent.
+///
+/// Note that this function is useful in case `aries` communication method is used.
+/// In other cases it returns ActionNotSupported error.
+///
+/// #params
+///
+/// command_handle: command handle to map callback to user context.
+///
+/// connection_handle: connection to send message
+///
+/// query: (Optional) query string to match against supported message types.
+///
+/// comment: (Optional) human-friendly description of the query.
+///
+/// cb: Callback that provides success or failure of request
+///
+/// #Returns
+/// Error code as a u32
+vcx_error_t vcx_connection_send_discovery_features(vcx_u32_t command_handle,
+                                                   vcx_connection_handle_t connection_handle,
+                                                   const char* query,
+                                                   const char* comment,
+                                                   void (*cb)(vcx_command_handle_t, vcx_error_t));
+
+// Takes the Connection object and returns callers pw_did associated with this connection
+//
+// #Params
+// command_handle: command handle to map callback to user context.
+//
+// connection_handle: Connection handle that identifies pairwise connection
+//
+// #Returns
+// Error code as a u32
+vcx_error_t vcx_connection_get_pw_did(vcx_command_handle_t command_handle, vcx_connection_handle_t connection_handle, void (*cb)(vcx_command_handle_t, vcx_error_t, const char*));
+
+// Takes the Connection object and returns callers their_pw_did associated with this connection
+//
+// #Params
+// command_handle: command handle to map callback to user context.
+//
+// connection_handle: Connection handle that identifies pairwise connection
+//
+// #Returns
+// Error code as a u32
+vcx_error_t vcx_connection_get_their_pw_did(vcx_command_handle_t command_handle, vcx_connection_handle_t connection_handle, void (*cb)(vcx_command_handle_t, vcx_error_t, const char*));
 
 // Create a Credential object that requests and receives a credential for an institution
 //
@@ -377,6 +504,28 @@ vcx_error_t vcx_credential_send_request(vcx_command_handle_t command_handle,
                                      vcx_payment_handle_t payment_handle,
                                      void (*cb)(vcx_command_handle_t, vcx_error_t));
 
+// Get the credential request message that can be sent to the specified connection
+//
+// #params
+// command_handle: command handle to map callback to user context
+//
+// credential_handle: credential handle that was provided during creation. Used to identify credential object
+//
+// my_pw_did: my pw did associated with person I'm sending credential to
+//
+// their_pw_did: their pw did associated with person I'm sending credential to
+//
+// cb: Callback that provides error status of credential request
+//
+// #Returns
+// Error code as a u32
+vcx_error_t vcx_credential_get_request_msg(vcx_command_handle_t command_handle,
+                                           vcx_credential_handle_t credential_handle,
+                                           const char *my_pw_did,
+                                           const char *their_pw_did,
+                                           vcx_payment_handle_t payment_handle,
+                                           void (*cb)(vcx_command_handle_t, vcx_error_t, const char*));
+
 // Takes the credential object and returns a json string of all its attributes
 //
 // #Params
@@ -392,7 +541,7 @@ vcx_error_t vcx_credential_serialize(vcx_command_handle_t command_handle,
                                   vcx_credential_handle_t handle,
                                   void (*cb)(vcx_command_handle_t, vcx_error_t, const char*));
 
-// Checks for any state change in the credential and updates the the state attribute.  If it detects a credential it
+// Checks for any state change in the credential and updates the state attribute.  If it detects a credential it
 // will store the credential in the wallet and update the state.
 //
 // #Params
@@ -407,6 +556,24 @@ vcx_error_t vcx_credential_serialize(vcx_command_handle_t command_handle,
 vcx_error_t vcx_credential_update_state(vcx_command_handle_t command_handle,
                                      vcx_credential_handle_t credential_handle,
                                      void (*cb)(vcx_command_handle_t, vcx_error_t, vcx_state_t));
+
+/// Update the state of the credential based on the given message.
+///
+/// #Params
+/// command_handle: command handle to map callback to user context.
+///
+/// credential_handle: Credential handle that was provided during creation. Used to identify credential object
+///
+/// message: message to process for state changes
+///
+/// cb: Callback that provides most current state of the credential and error status of request
+///
+/// #Returns
+/// Error code as a u32
+vcx_error_t vcx_credential_update_state_with_message(vcx_command_handle_t command_handle,
+                                                     vcx_credential_handle_t credential_handle,
+                                                     const char *message,
+                                                     void (*cb)(vcx_command_handle_t, vcx_error_t, vcx_state_t));
 
 // Create a new CredentialDef object that can create credential definitions on the ledger
 //
@@ -440,6 +607,45 @@ vcx_error_t vcx_credentialdef_create(vcx_command_handle_t command_handle,
                                   const char *config,
                                   vcx_payment_handle_t payment_handle,
                                   void (*cb)(vcx_command_handle_t, vcx_error_t, vcx_credential_handle_t));
+
+/// Create a new CredentialDef object that will be published by Endorser later.
+///
+/// #Params
+/// command_handle: command handle to map callback to user context.
+///
+/// source_id: Enterprise's personal identification for the user.
+///
+/// credentialdef_name: Name of credential definition
+///
+/// schema_id: The schema id given during the creation of the schema
+///
+/// issuer_did: did corresponding to entity issuing a credential. Needs to have Trust Anchor permissions on ledger
+///
+/// tag: way to create a unique credential def with the same schema and issuer did.
+///
+/// revocation details: type-specific configuration of credential definition revocation
+///     support_revocation: true|false - Optional, by default its false
+///     tails_file: path to tails file - Optional if support_revocation is false
+///     max_creds: size of tails file - Optional if support_revocation is false
+///
+/// endorser: DID of the Endorser that will submit the transaction.
+///
+/// # Examples config ->  "{}" | "{"support_revocation":false}" | "{"support_revocation":true, "tails_file": "/tmp/tailsfile.txt", "max_creds": 1}"
+/// cb: Callback that provides CredentialDef handle, transactions (CredentialDef, Option<RevocRegDef>, Option<RevocRegEntry>) that should be passed to Endorser for publishing.
+///
+/// payment_handle: future use (currently uses any address in wallet)
+///
+/// #Returns
+/// Error code as a u32
+vcx_error_t vcx_credentialdef_prepare_for_endorser(vcx_command_handle_t command_handle,
+                                                  const char *source_id,
+                                                  const char *credentialdef_name,
+                                                  const char *schema_id,
+                                                  const char *issuer_did,
+                                                  const char *tag,
+                                                  const char *config,
+                                                  const char *endorser,
+                                                  void (*cb)(vcx_command_handle_t, vcx_error_t, vcx_credential_handle_t, const char*, const char*, const char*));
 
 // Takes a json string representing a credentialdef object and recreates an object matching the json
 //
@@ -514,6 +720,36 @@ vcx_error_t vcx_credentialdef_release(vcx_credential_handle_t credentialdef_hand
 vcx_error_t vcx_credentialdef_serialize(vcx_command_handle_t command_handle,
                                      vcx_credential_handle_t credentialdef_handle,
                                      void (*cb)(vcx_command_handle_t, vcx_error_t, const char*));
+
+/// Checks if credential definition is published on the Ledger and updates the state
+///
+/// #Params
+/// command_handle: command handle to map callback to user context.
+///
+/// credentialdef_handle: Credentialdef handle that was provided during creation. Used to access credentialdef object
+///
+/// cb: Callback that provides most current state of the credential definition and error status of request
+///
+/// #Returns
+/// Error code as a u32
+vcx_error_t vcx_credentialdef_update_state(vcx_command_handle_t command_handle,
+                                           credentialdef_handle connection_handle,
+                                           void (*cb)(vcx_command_handle_t, vcx_error_t, vcx_state_t));
+
+/// Get the current state of the credential definition object
+///
+/// #Params
+/// command_handle: command handle to map callback to user context.
+///
+/// credentialdef_handle: Credentialdef handle that was provided during creation. Used to access credentialdef object
+///
+/// cb: Callback that provides most current state of the credential definition and error status of request
+///
+/// #Returns
+/// Error code as a u32
+vcx_error_t vcx_credentialdef_get_state(vcx_command_handle_t command_handle,
+                                        credentialdef_handle connection_handle,
+                                        void (*cb)(vcx_command_handle_t, vcx_error_t, vcx_state_t));
 
 // Create a proof for fulfilling a corresponding proof request
 //
@@ -595,6 +831,73 @@ vcx_error_t vcx_disclosed_proof_generate_proof(vcx_command_handle_t command_hand
                                             const char *self_attested_attrs,
                                             void (*cb)(vcx_command_handle_t, vcx_error_t));
 
+/// Declines presentation request.
+/// There are two ways of following interaction:
+///     - Prover wants to propose using a different presentation - pass `proposal` parameter.
+///     - Prover doesn't want to continue interaction - pass `reason` parameter.
+/// Note that only one of these parameters can be passed.
+///
+/// Note that proposing of different presentation is supported for `aries` protocol only.
+///
+/// #Params
+/// command_handle: command handle to map callback to user context.
+///
+/// proof_handle: Proof handle that was provided during creation. Used to identify the disclosed proof object
+///
+/// connection_handle: Connection handle that identifies pairwise connection
+///
+/// reason: human-readable string that explain the reason of decline
+///
+/// proposal: the proposed format of presentation request
+/// (see https://github.com/hyperledger/aries-rfcs/tree/master/features/0037-present-proof#presentation-preview for details)
+/// {
+///    "attributes": [
+///        {
+///            "name": "<attribute_name>",
+///            "cred_def_id": Optional("<cred_def_id>"),
+///            "mime-type": Optional("<type>"),
+///            "value": Optional("<value>")
+///        },
+///        // more attributes
+///    ],
+///    "predicates": [
+///        {
+///            "name": "<attribute_name>",
+///            "cred_def_id": Optional("<cred_def_id>"),
+///            "predicate": "<predicate>", - one of "<", "<=", ">=", ">"
+///            "threshold": <threshold>
+///        },
+///        // more predicates
+///    ]
+/// }
+/// # Example
+///  proposal ->
+///     {
+///          "attributes": [
+///              {
+///                  "name": "first name"
+///              }
+///          ],
+///          "predicates": [
+///              {
+///                  "name": "age",
+///                  "predicate": ">",
+///                  "threshold": 18
+///              }
+///          ]
+///      }
+///
+/// cb: Callback that returns error status
+///
+/// #Returns
+/// Error code as a u32
+vcx_error_t vcx_disclosed_proof_decline_presentation_request(vcx_command_handle_t command_handle,
+                                                             vcx_disclosed_proof_handle_t proof_handle,
+                                                             vcx_connection_handle_t connection_handle,
+                                                             const char *reason,
+                                                             const char *proposal,
+                                                             void (*cb)(vcx_command_handle_t, vcx_error_t));
+
 // Queries agency for proof requests from the given connection.
 //
 // #Params
@@ -667,6 +970,87 @@ vcx_error_t vcx_disclosed_proof_send_proof(vcx_command_handle_t command_handle,
                                         vcx_connection_handle_t connection_handle,
                                         void (*cb)(vcx_command_handle_t, vcx_error_t));
 
+// Send a reject proof to the connection, called after having received a proof request
+//
+// #params
+// command_handle: command handle to map callback to API user context.
+//
+// proof_handle: proof handle that was provided duration creation.  Used to identify proof object.
+//
+// connection_handle: Connection handle that identifies pairwise connection
+//
+// cb: Callback that provides error status of proof send request
+//
+// #Returns
+// Error code as u32
+vcx_error_t vcx_disclosed_proof_reject_proof(vcx_command_handle_t command_handle,
+                                        vcx_disclosed_proof_handle_t proof_handle,
+                                        vcx_connection_handle_t connection_handle,
+                                        void (*cb)(vcx_command_handle_t, vcx_error_t));
+
+// Get the proof message for sending.
+//
+// #params
+// command_handle: command handle to map callback to API user context.
+//
+// proof_handle: proof handle that was provided duration creation.  Used to identify proof object.
+//
+// cb: Callback that provides error status of proof send request
+//
+// #Returns
+// Error code as u32
+vcx_error_t vcx_disclosed_proof_get_proof_msg(vcx_command_handle_t command_handle,
+                                              vcx_disclosed_proof_handle_t proof_handle,
+                                              void (*cb)(vcx_command_handle_t, vcx_error_t, const char*));
+
+// Get the reject proof message for sending.
+//
+// #params
+// command_handle: command handle to map callback to API user context.
+//
+// proof_handle: proof handle that was provided duration creation.  Used to identify proof object.
+//
+// cb: Callback that provides error status of proof send request
+//
+// #Returns
+// Error code as u32
+vcx_error_t vcx_disclosed_proof_get_reject_msg(vcx_command_handle_t command_handle,
+                                               vcx_disclosed_proof_handle_t proof_handle,
+                                               void (*cb)(vcx_command_handle_t, vcx_error_t, const char*));
+
+// Redirects to an existing connection, if a connection already exists.
+//
+// #params
+// command_handle: command handle to map callback to API user context.
+//
+// connection_handle: Connection handle that identifies pairwise connection.
+//
+// redirect_connection_handle: Redirect connection handle, used to identify an existing connection.
+//
+// cb: Callback that provides error status of a redirection.
+//
+// #Returns
+// Error code as u32
+vcx_error_t vcx_connection_redirect(vcx_command_handle_t command_handle,
+                                    vcx_connection_handle_t connection_handle,
+                                    vcx_connection_handle_t redirect_connection_handle,
+                                    void (*cb)(vcx_command_handle_t, vcx_error_t));
+
+// Gets the details of an existing connection.
+//
+// #params
+// command_handle: command handle to map callback to API user context.
+//
+// connection_handle: Connection handle that identifies pairwise connection.
+//
+// cb: Callback that provides error status of a redirection.
+//
+// #Returns
+// Error code as u32
+vcx_error_t vcx_connection_get_redirect_details(vcx_command_handle_t command_handle,
+                                                vcx_connection_handle_t connection_handle,
+                                                void (*cb)(vcx_command_handle_t, vcx_error_t, const char *));
+
 // Takes the disclosed proof object and returns a json string of all its attributes
 //
 // #Params
@@ -682,7 +1066,7 @@ vcx_error_t vcx_disclosed_proof_serialize(vcx_command_handle_t command_handle,
                                        vcx_disclosed_proof_handle_t proof_handle,
                                        void (*cb)(vcx_command_handle_t, vcx_error_t, const char*));
 
-// Checks for any state change in the disclosed proof and updates the the state attribute
+// Checks for any state change in the disclosed proof and updates the state attribute
 //
 // #Params
 // command_handle: command handle to map callback to user context.
@@ -696,6 +1080,24 @@ vcx_error_t vcx_disclosed_proof_serialize(vcx_command_handle_t command_handle,
 vcx_error_t vcx_disclosed_proof_update_state(vcx_command_handle_t command_handle,
                                           vcx_disclosed_proof_handle_t proof_handle,
                                           void (*cb)(vcx_command_handle_t, vcx_error_t, vcx_state_t));
+
+/// Checks for any state change from the given message and updates the state attribute
+///
+/// #Params
+/// command_handle: command handle to map callback to user context.
+///
+/// proof_handle: Credential handle that was provided during creation. Used to identify disclosed proof object
+///
+/// message: message to process for state changes
+///
+/// cb: Callback that provides most current state of the disclosed proof and error status of request
+///
+/// #Returns
+/// Error code as a u32
+vcx_error_t vcx_disclosed_proof_update_state_with_message(vcx_command_handle_t command_handle,
+                                                          vcx_disclosed_proof_handle_t proof_handle,
+                                                          const char *message,
+                                                          void (*cb)(vcx_command_handle_t, vcx_error_t, vcx_state_t));
 
 const char *vcx_error_c_message(vcx_error_t error_code);
 
@@ -873,7 +1275,7 @@ vcx_error_t vcx_issuer_credential_serialize(vcx_command_handle_t command_handle,
                                          vcx_issuer_credential_handle_t credential_handle,
                                          void (*cb)(vcx_command_handle_t, vcx_error_t, const char*));
 
-// Checks for any state change in the credential and updates the the state attribute
+// Checks for any state change in the credential and updates the state attribute
 //
 // #Params
 // command_handle: command handle to map callback to user context.
@@ -887,6 +1289,29 @@ vcx_error_t vcx_issuer_credential_serialize(vcx_command_handle_t command_handle,
 vcx_error_t vcx_issuer_credential_update_state(vcx_command_handle_t command_handle,
                                             vcx_issuer_credential_handle_t credential_handle,
                                             void (*cb)(vcx_command_handle_t, vcx_error_t, vcx_state_t));
+
+/// Update the state of the credential based on the given message.
+///
+/// #Params
+/// command_handle: command handle to map callback to user context.
+///
+/// credential_handle: Credential handle that was provided during creation. Used to identify credential object
+///
+/// message: message to process for state changes
+///
+/// cb: Callback that provides most current state of the credential and error status of request
+///     States:
+///         1 - Initialized
+///         2 - Offer Sent
+///         3 - Request Received
+///         4 - Issued
+///
+/// #Returns
+/// Error code as a u32
+vcx_error_t vcx_issuer_credential_update_state_with_message(vcx_command_handle_t command_handle,
+                                                            vcx_issuer_credential_handle_t credential_handle,
+                                                            const char *message,
+                                                            void (*cb)(vcx_command_handle_t, vcx_error_t, vcx_state_t));
 
 // Send Credential that was requested by user
 //
@@ -924,6 +1349,39 @@ vcx_error_t vcx_issuer_send_credential_offer(vcx_command_handle_t command_handle
                                           vcx_connection_handle_t connection_handle,
                                           void (*cb)(vcx_command_handle_t, vcx_error_t));
 
+
+// Takes the credential object and returns a credential offer
+//
+// #Params
+// command_handle: command handle to map callback to user context.
+//
+// credential_handle: Credential handle that was provided during creation. Used to identify credential object
+//
+// cb: Callback that provides json string of the credential offer
+//
+// #Returns
+// Error code as a u32
+vcx_error_t vcx_issuer_get_credential_offer_msg(vcx_command_handle_t command_handle,
+                                                vcx_issuer_credential_handle_t credential_handle,
+                                                void (*cb)(vcx_command_handle_t, vcx_error_t, const char*));
+
+// Takes the credential object and returns a credential (For sending purposes)
+//
+// #Params
+// command_handle: command handle to map callback to user context.
+//
+// credential_handle: Credential handle that was provided during creation. Used to identify credential object
+//
+// cb: Callback that provides json string of the credential
+//
+// #Returns
+// Error code as a u32
+vcx_error_t vcx_issuer_get_credential_msg(vcx_command_handle_t command_handle,
+                                          vcx_issuer_credential_handle_t credential_handle,
+                                          const char *my_pw_did,
+                                          void (*cb)(vcx_command_handle_t, vcx_error_t, const char*));
+
+
 // Get ledger fees from the sovrin network
 //
 // #Params
@@ -954,6 +1412,26 @@ vcx_error_t vcx_messages_download(vcx_command_handle_t command_handle,
                                const char *uids,
                                const char *pw_dids,
                                void (*cb)(vcx_command_handle_t, vcx_error_t, const char*));
+
+// Retrieve messages from the cloud agent
+//
+// #params
+//
+// command_handle: command handle to map callback to user context.
+//
+// message_status: optional - query for messages with the specified status
+//
+// uids: optional, comma separated - query for messages with the specified uids
+//
+// cb: Callback that provides array of matching messages retrieved
+//
+// #Returns
+// Error code as a u32
+vcx_error_t vcx_download_agent_messages(vcx_command_handle_t command_handle,
+                               const char *message_status,
+                               const char *uids,
+                               void (*cb)(vcx_command_handle_t, vcx_error_t, const char*));
+
 
 // Update the status of messages from the specified connection
 //
@@ -1073,6 +1551,22 @@ vcx_error_t vcx_proof_serialize(vcx_command_handle_t command_handle,
                              vcx_proof_handle_t proof_handle,
                              void (*cb)(vcx_command_handle_t, vcx_error_t, const char*));
 
+// Takes the Proof object and returns a proof
+//
+// #Params
+// command_handle: command handle to map callback to user context.
+//
+// proof_handle: Proof handle that was provided during creation. Used to identify proof object
+//
+// cb: Callback that provides json string of the credential offer
+//
+// #Returns
+// Error code as a u32
+vcx_error_t vcx_get_proof_msg(vcx_command_handle_t command_handle,
+                              vcx_proof_handle_t proof_handle,
+                              void (*cb)(vcx_command_handle_t, vcx_error_t, const char*));
+
+
 // Checks for any state change and updates the proof state attribute
 //
 // #Params
@@ -1087,6 +1581,30 @@ vcx_error_t vcx_proof_serialize(vcx_command_handle_t command_handle,
 vcx_error_t vcx_proof_update_state(vcx_command_handle_t command_handle,
                                 vcx_proof_handle_t proof_handle,
                                 void (*cb)(vcx_command_handle_t, vcx_error_t, vcx_state_t));
+
+
+/// Update the state of the proof based on the given message.
+///
+/// #Params
+/// command_handle: command handle to map callback to user context.
+///
+/// proof_handle: Proof handle that was provided during creation. Used to access proof object
+///
+/// message: message to process for state changes
+///
+/// cb: Callback that provides most current state of the proof and error status of request
+///     States:
+///         1 - Initialized
+///         2 - Request Sent
+///         3 - Proof Received
+///         4 - Accepted
+///
+/// #Returns
+/// Error code as a u32
+vcx_error_t vcx_proof_update_state_with_message(vcx_command_handle_t command_handle,
+                                                vcx_proof_handle_t proof_handle,
+                                                const char *message,
+                                                void (*cb)(vcx_command_handle_t, vcx_error_t, vcx_state_t));
 
 // Provision an agent in the agency, populate configuration and wallet for this agent.
 // NOTE: for asynchronous call use vcx_agent_provision_async
@@ -1126,6 +1644,35 @@ vcx_error_t vcx_schema_create(vcx_command_handle_t command_handle,
                            const char *schema_data,
                            vcx_payment_handle_t payment_handle,
                            void (*cb)(vcx_command_handle_t, vcx_error_t, vcx_schema_handle_t));
+
+/// Create a new Schema object that will be published by Endorser later.
+///
+/// #Params
+/// command_handle: command handle to map callback to user context.
+///
+/// source_id: Enterprise's personal identification for the user.
+///
+/// schema_name: Name of schema
+///
+/// version: version of schema
+///
+/// schema_data: list of attributes that will make up the schema (the number of attributes should be less or equal than 125)
+///
+/// endorser: DID of the Endorser that will submit the transaction.
+///
+/// # Example schema_data -> "["attr1", "attr2", "attr3"]"
+///
+/// cb: Callback that provides Schema handle and Schema transaction that should be passed to Endorser for publishing.
+///
+/// #Returns
+/// Error code as a u32
+vcx_error_t vcx_schema_prepare_for_endorser(vcx_command_handle_t command_handle,
+                                           const char *source_id,
+                                           const char *schema_name,
+                                           const char *version,
+                                           const char *schema_data,
+                                           const char *endorser,
+                                           void (*cb)(vcx_command_handle_t, vcx_error_t, vcx_schema_handle_t, const char*));
 
 // Takes a json string representing a schema object and recreates an object matching the json
 //
@@ -1218,6 +1765,36 @@ vcx_error_t vcx_schema_release(vcx_schema_handle_t schema_handle);
 vcx_error_t vcx_schema_serialize(vcx_command_handle_t command_handle,
                               vcx_schema_handle_t schema_handle,
                               void (*cb)(vcx_command_handle_t, vcx_error_t, const char*));
+
+/// Checks if schema is published on the Ledger and updates the state
+///
+/// #Params
+/// command_handle: command handle to map callback to user context.
+///
+/// schema_handle: Schema handle that was provided during creation. Used to access schema object
+///
+/// cb: Callback that provides most current state of the schema and error status of request
+///
+/// #Returns
+/// Error code as a u32
+vcx_error_t vcx_schema_update_state(vcx_command_handle_t command_handle,
+                                    schema_handle connection_handle,
+                                    void (*cb)(vcx_command_handle_t, vcx_error_t, vcx_state_t));
+
+/// Get the current state of the schema object
+///
+/// #Params
+/// command_handle: command handle to map callback to user context.
+///
+/// schema_handle: Schema handle that was provided during creation. Used to access schema object
+///
+/// cb: Callback that provides most current state of the schema and error status of request
+///
+/// #Returns
+/// Error code as a u32
+vcx_error_t vcx_schema_get_state(vcx_command_handle_t command_handle,
+                                 credentialdef_handle connection_handle,
+                                 void (*cb)(vcx_command_handle_t, vcx_error_t, vcx_state_t));
 
 // Reset libvcx to a pre-configured state, releasing/deleting any handles and freeing memory
 //
@@ -1316,6 +1893,45 @@ vcx_error_t vcx_wallet_close_search(vcx_command_handle_t command_handle,
 vcx_error_t vcx_wallet_create_payment_address(vcx_command_handle_t command_handle,
                                            const char *seed,
                                            void (*cb)(vcx_command_handle_t, vcx_error_t, const char*));
+
+// Signs a message with a payment address.
+//
+// # Params:
+// command_handle: command handle to map callback to user context.
+// address: payment address of message signer. The key must be created by calling vcx_wallet_create_address
+// message_raw: a pointer to first byte of message to be signed
+// message_len: a message length
+// cb: Callback that takes command result as parameter.
+//
+// # Returns:
+// a signature string
+
+vcx_error_t vcx_wallet_sign_with_address(vcx_command_handle_t command_handle,
+                                                 const char *payment_address,
+                                                 const unsigned short *message_raw,
+                                                 vcx_u32_t message_len,
+                                                 void (*cb)(vcx_command_handle_t, vcx_error_t, const unsigned short *, vcx_u32_t))
+
+// Verify a signature with a payment address.
+//
+// #Params
+// command_handle: command handle to map callback to user context.
+// address: payment address of the message signer
+// message_raw: a pointer to first byte of message that has been signed
+// message_len: a message length
+// signature_raw: a pointer to first byte of signature to be verified
+// signature_len: a signature length
+// cb: Callback that takes command result as parameter.
+//
+// #Returns
+// valid: true - if signature is valid, false - otherwise
+vcx_error_t vcx_wallet_verify_with_address(vcx_command_handle_t command_handle,
+                                                   const char *payment_address,
+                                                   const unsigned short *message_raw,
+                                                   vcx_u32_t message_len,
+                                                   const unsigned short *signature_raw,
+                                                   vcx_u32_t signature_len,
+                                                   void (*cb)(vcx_command_handle_t, vcx_error_t, vcx_bool_t))
 
 // Deletes an existing record.
 // Assumes there is an open wallet and that a type and id pair already exists.
@@ -1581,10 +2197,10 @@ vcx_error_t vcx_wallet_validate_payment_address(int32_t command_handle,
 
 vcx_error_t vcx_set_default_logger( const char * pattern );
 vcx_error_t vcx_set_logger( const void* context,
-                            vcx_bool_t (*enabledFn)(const void*  context,
+                            vcx_bool_t (*enabledFn)(const void* context,
                                                       vcx_u32_t level,
                                                       const char* target),
-                            void (*logFn)(const void*  context,
+                            void (*logFn)(const void* context,
                                           vcx_u32_t level,
                                           const char* target,
                                           const char* message,
@@ -1592,18 +2208,100 @@ vcx_error_t vcx_set_logger( const void* context,
                                           const char* file,
                                           vcx_u32_t line),
                             void (*flushFn)(const void*  context));
-vcx_error_t vcx_get_logger(const void*  vcx_get_logger,
-                           vcx_bool_t (**enabledFn)(const void*  context,
+
+
+vcx_error_t vcx_set_logger_with_max_lvl( const void* context,
+										 vcx_bool_t (*enabledFn)(const void* context,
+										 						 vcx_u32_t level,
+										 						 const char* target),
+										 void (*logFn)(const void* context,
+										 			   vcx_u32_t level,
+										 			   const char* target,
+										 			   const char* message,
+										 			   const char* module_path,
+										 			   const char* file,
+										 			   vcx_u32_t line),
+										 void (*flushFn)(const void* context)
+										 vcx_u32_t max_lvl);
+
+vcx_error_t vcx_set_log_max_lvl( vcx_u32_t max_lvl);
+
+vcx_error_t vcx_get_logger(const void* vcx_get_logger,
+                           vcx_bool_t (**enabledFn)(const void* context,
                                                      vcx_u32_t level,
                                                      const char* target),
-                           void (**logFn)(const void*  context,
+                           void (**logFn)(const void* context,
                                           vcx_u32_t level,
                                           const char* target,
                                           const char* message,
                                           const char* module_path,
                                           const char* file,
                                           vcx_u32_t line),
-                           void (**flushFn)(const void*  context) );
+                           void (**flushFn)(const void* context) );
+
+/// Get details for last occurred error.
+///
+/// This function should be called in two places to handle both cases of error occurrence:
+///     1) synchronous  - in the same application thread
+///     2) asynchronous - inside of function callback
+///
+/// NOTE: Error is stored until the next one occurs in the same execution thread or until asynchronous callback finished.
+///       Returning pointer has the same lifetime.
+///
+/// #Params
+/// * `error_json_p` - Reference that will contain error details (if any error has occurred before)
+///  in the format:
+/// {
+///     "backtrace": Optional<str> - error backtrace.
+///         Collecting of backtrace can be enabled by setting environment variable `RUST_BACKTRACE=1`
+///     "message": str - human-readable error description
+/// }
+///
+vcx_error_t vcx_get_current_error(const char ** error_json_p);
+
+/// Retrieve author agreement set on the Ledger
+///
+/// #params
+///
+/// command_handle: command handle to map callback to user context.
+///
+/// cb: Callback that provides array of matching messages retrieved
+///
+/// #Returns
+/// Error code as a u32
+vcx_error_t vcx_get_ledger_author_agreement(vcx_u32_t command_handle,
+                                            void (*cb)(vcx_command_handle_t, vcx_error_t, const char*));
+
+/// Set some accepted agreement as active.
+///
+/// As result of succesfull call of this funciton appropriate metadata will be appended to each write request by `indy_append_txn_author_agreement_meta_to_request` libindy call.
+///
+/// #Params
+/// text and version - (optional) raw data about TAA from ledger.
+///     These parameters should be passed together.
+///     These parameters are required if hash parameter is ommited.
+/// hash - (optional) hash on text and version. This parameter is required if text and version parameters are ommited.
+/// acc_mech_type - mechanism how user has accepted the TAA
+/// time_of_acceptance - UTC timestamp when user has accepted the TAA
+///
+/// #Returns
+/// Error code as a u32
+vcx_error_t vcx_set_active_txn_author_agreement_meta(const char *text, const char *version, const char *hash, const char *acc_mech_type, vcx_u64_t type_);
+
+/// Endorse transaction to the ledger preserving an original author
+///
+/// #params
+///
+/// command_handle: command handle to map callback to user context.
+/// transaction: transaction to endorse
+///
+/// cb: Callback that provides array of matching messages retrieved
+///
+/// #Returns
+/// Error code as a u32
+vcx_error_t vcx_endorse_transaction(vcx_u32_t command_handle,
+                                    const char* transaction
+                                    void (*cb)(vcx_command_handle_t, vcx_error_t));
 
 #ifdef __cplusplus
 } // extern "C"
